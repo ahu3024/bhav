@@ -19,6 +19,11 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+# Raised when data/bhav.db has no tables yet (pipeline not run). Treated as
+# "backend not provisioned" -> 503, not a 500, so the browser still gets CORS
+# headers and the frontend can show a real message.
+NOT_PROVISIONED = (FileNotFoundError, pd.errors.DatabaseError)
+
 from .alert_engine import build_alert
 from .backtest import backtest_date, track_record
 from .config import CROP, DISTRICT, LAT, LON
@@ -50,15 +55,17 @@ def health():
 def alert_today():
     try:
         return build_alert(_latest_date()).as_dict()
-    except FileNotFoundError as e:
-        raise HTTPException(503, str(e))
+    except NOT_PROVISIONED as e:
+        raise HTTPException(503, f"backend not provisioned — run the pipeline: {e}")
 
 
 @app.get("/alert")
 def alert(date: str = Query(..., description="YYYY-MM-DD")):
     try:
         return build_alert(date).as_dict()
-    except (ValueError, FileNotFoundError) as e:
+    except NOT_PROVISIONED as e:
+        raise HTTPException(503, f"backend not provisioned — run the pipeline: {e}")
+    except ValueError as e:
         raise HTTPException(400, str(e))
 
 
@@ -66,7 +73,9 @@ def alert(date: str = Query(..., description="YYYY-MM-DD")):
 def backtest(date: str = Query(..., description="YYYY-MM-DD")):
     try:
         return backtest_date(date)
-    except (ValueError, FileNotFoundError) as e:
+    except NOT_PROVISIONED as e:
+        raise HTTPException(503, f"backend not provisioned — run the pipeline: {e}")
+    except ValueError as e:
         raise HTTPException(400, str(e))
 
 
