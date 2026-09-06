@@ -1,0 +1,65 @@
+"""Central config for the Bhav backend.
+
+Hackathon scope: one crop, one district — onion, Nashik (Maharashtra).
+Everything downstream (ingest, features, model, alert engine) reads from here
+so widening scope later is a config change, not a rewrite.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+DATA_DIR = BACKEND_DIR / "data"
+RAW_DIR = DATA_DIR / "raw"
+MODELS_DIR = BACKEND_DIR / "models"
+DB_PATH = DATA_DIR / "bhav.db"
+MODEL_PATH = MODELS_DIR / "model.pkl"
+
+for _d in (RAW_DIR, MODELS_DIR):
+    _d.mkdir(parents=True, exist_ok=True)
+
+# --- Target crop / district -------------------------------------------------
+
+CROP = "onion"
+DISTRICT = "Nashik"
+STATE = "Maharashtra"
+
+# Agmarknet form codes (SearchCmmMkt.aspx).
+AGMARKNET = {
+    "commodity_code": 23,       # Onion
+    "commodity_head": "Onion",
+    "state_code": "MH",
+    "state_head": "Maharashtra",
+    "district_head": "Nashik",
+    # Nashik APMC markets we care about; blank district code pulls the whole
+    # state, we filter to these after download.
+    "markets": ["Lasalgaon", "Pimpalgaon Baswant", "Nashik", "Yeola", "Devla"],
+}
+
+# Centroid of the Nashik onion belt (Lasalgaon area) for satellite + weather.
+LAT = 20.145
+LON = 74.238
+
+# Rectangular AOI around the belt for NDVI sampling (deg).
+NDVI_AOI = {"min_lon": 74.00, "min_lat": 19.95, "max_lon": 74.55, "max_lat": 20.40}
+
+# --- History window -------------------------------------------------------- #
+
+HISTORY_START = "2016-01-01"   # ~9 seasons back
+# HISTORY_END defaults to "today" at fetch time.
+
+# --- Modelling ------------------------------------------------------------- #
+
+# Predict: will the modal price fall by more than DROP_THRESHOLD_PCT within
+# HORIZON_DAYS, relative to today's price?
+HORIZON_DAYS = 10
+DROP_THRESHOLD_PCT = 0.10
+
+# Alert-engine thresholds on predicted drop probability.
+SELL_PROB = 0.60     # >= this  -> RED  (sell now)
+CAUTION_PROB = 0.35  # >= this  -> AMBER (caution)
+# below CAUTION_PROB          -> GREEN (wait)
+
+# Sell window length (days) the point prediction is spread into.
+WINDOW_DAYS = 5

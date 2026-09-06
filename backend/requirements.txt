@@ -1,0 +1,18 @@
+# Core pipeline
+pandas>=2.2
+numpy>=1.26
+scikit-learn>=1.4
+lightgbm>=4.3
+requests>=2.31
+lxml>=5.0           # pandas.read_html parser for Agmarknet
+python-dotenv>=1.0
+
+# API
+fastapi>=0.110
+uvicorn[standard]>=0.29
+
+# Satellite NDVI
+earthengine-api>=0.1.390
+
+# Optional: real WhatsApp send (roadmap §1.5). Safe to omit for the mock UI.
+twilio>=9.0
