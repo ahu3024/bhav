@@ -12,10 +12,12 @@ from dataclasses import dataclass
 
 import pandas as pd
 
-from .features import feature_row_asof
+from .features import feature_context_asof
 from .model import load_model
 
-# Plain-language phrasing for each feature, keyed by sign of its contribution.
+# Plain-language phrasing for each feature: (phrase when the value is ABOVE its
+# to-date median, phrase when BELOW). The model's SHAP effect only decides which
+# way it pushes the call, not what's true on the ground.
 _FEATURE_PHRASES = {
     "ndvi":            ("crop canopy healthy and near peak", "crop canopy thin / stressed"),
     "ndvi_d7":         ("greenness rising week-on-week", "greenness dropping week-on-week"),
@@ -66,7 +68,7 @@ class Score:
 def score_asof(date, top_n: int = 4) -> Score:
     date = pd.Timestamp(date).normalize()
     model = load_model()
-    row = feature_row_asof(date)
+    row, medians = feature_context_asof(date)
 
     X = row[model.feature_cols].to_frame().T.astype(float)
     prob = float(model.predict_proba(X)[0])
@@ -79,12 +81,13 @@ def score_asof(date, top_n: int = 4) -> Score:
 
     factors = []
     for feat, effect in ranked[:top_n]:
-        up, down = _FEATURE_PHRASES.get(feat, (feat, feat))
+        high, low = _FEATURE_PHRASES.get(feat, (feat, feat))
+        is_high = float(row[feat]) >= float(medians.get(feat, 0.0))
         factors.append({
             "feature": feat,
             "effect": round(float(effect), 4),
             "direction": "raises_sell_pressure" if effect > 0 else "supports_holding",
-            "phrase": up if effect > 0 else down,
+            "phrase": high if is_high else low,
             "value": round(float(row[feat]), 4),
         })
 

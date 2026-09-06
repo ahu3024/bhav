@@ -159,9 +159,19 @@ def training_frame() -> pd.DataFrame:
 
 def feature_row_asof(date) -> pd.Series:
     """The feature vector as it would have looked on `date` (no lookahead)."""
+    return feature_context_asof(date)[0]
+
+
+def feature_context_asof(date) -> tuple[pd.Series, pd.Series]:
+    """(row, medians) as of `date`. Medians use only data up to `date`, so the
+    "is this value high or low" phrasing in scoring carries no lookahead."""
     date = pd.Timestamp(date).normalize()
-    df = build_features(with_target=False)
-    df = df.loc[:date]
-    if df.empty:
-        raise ValueError(f"no feature data on or before {date.date()}")
-    return df.iloc[-1]
+    df = build_features(with_target=False).loc[:date]
+    # Drop the warm-up period where rolling features are still NaN.
+    ready = df.dropna(subset=FEATURE_COLS)
+    if ready.empty:
+        raise ValueError(
+            f"not enough history before {date.date()} to score "
+            "(need ~1 year of data for the seasonal features)"
+        )
+    return ready.iloc[-1], ready[FEATURE_COLS].median()

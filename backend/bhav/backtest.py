@@ -45,22 +45,36 @@ def backtest_date(date, horizon_days: int = HORIZON_DAYS) -> dict:
             future.min() / p0 - 1.0 <= -DROP_THRESHOLD_PCT
         )
 
-    # Outcome vs "sold blind today".
-    sell_blind = p0
-    if alert.color == "RED":
-        strategy_price = float(
-            price.loc[alert.window_start:alert.window_end].mean()
-        )
-        action = "sold in the alert window"
-    else:  # held to end of horizon (or window for AMBER)
-        hold_to = alert.window_end if alert.color == "AMBER" else (
-            (date + pd.Timedelta(days=horizon_days)).strftime("%Y-%m-%d")
-        )
-        seg = price.loc[date:hold_to]
-        strategy_price = float(seg.iloc[-1]) if len(seg) else p0
-        action = "held past the usual sell date"
+    # Outcome: what a farmer following Bhav got, vs. the habit the alert is
+    # arguing against. Baseline differs by colour so the comparison is fair:
+    #   RED   -> vs. holding the crop for a "better price" that never comes
+    #   GREEN -> vs. selling now, at the first sign of pressure
+    #   AMBER -> vs. selling everything now
+    end_seg = price.loc[date + pd.Timedelta(days=1):
+                        date + pd.Timedelta(days=horizon_days)]
+    price_end = float(end_seg.iloc[-1]) if len(end_seg) else p0
 
-    delta = strategy_price - sell_blind
+    if alert.color == "RED":
+        strategy_price = float(price.loc[alert.window_start:alert.window_end].mean())
+        after_window = price.loc[
+            pd.Timestamp(alert.window_end) + pd.Timedelta(days=1):
+            date + pd.Timedelta(days=horizon_days)
+        ]
+        baseline_price = float(after_window.mean()) if len(after_window) else price_end
+        action = "sold across the alert window"
+        baseline_label = "held out for a higher price"
+    elif alert.color == "GREEN":
+        strategy_price = price_end
+        baseline_price = p0
+        action = "held to the end of the window"
+        baseline_label = "sold now, at first pressure"
+    else:  # AMBER
+        strategy_price = 0.5 * p0 + 0.5 * price_end
+        baseline_price = p0
+        action = "part-sold now, held the rest"
+        baseline_label = "sold everything now"
+
+    delta = strategy_price - baseline_price
     move = realized.get("max_drop_pct")
     end_move = (
         (realized["price_end"] / p0 - 1.0)
@@ -84,11 +98,12 @@ def backtest_date(date, horizon_days: int = HORIZON_DAYS) -> dict:
         "realized": realized,
         "outcome": {
             "action": action,
+            "baseline_label": baseline_label,
             "strategy_price_per_quintal": round(strategy_price, 2),
-            "sold_blind_price_per_quintal": round(sell_blind, 2),
+            "baseline_price_per_quintal": round(baseline_price, 2),
             "delta_per_quintal": round(delta, 2),
-            "delta_pct": round(delta / sell_blind, 4),
-            "call_was_right": bool(hit),
+            "delta_pct": round(delta / baseline_price, 4),
+            "call_was_right": None if hit is None else bool(hit),
         },
     }
 
