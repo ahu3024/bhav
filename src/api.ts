@@ -74,9 +74,9 @@ export function sourceOf(feature: string): string {
   return 'Model'
 }
 
+const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC']
+
 export function formatDate(iso: string): string {
-  const d = new Date(iso + 'T00:00:00')
-  return d
-    .toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-    .toUpperCase()
+  const [y, m, d] = iso.split('-').map(Number)
+  return `${String(d).padStart(2, '0')} ${MONTHS[m - 1]} ${y}`
 }

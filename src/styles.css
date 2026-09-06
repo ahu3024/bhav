@@ -226,7 +226,7 @@ h1, h2, h3, p, dl, dd { margin: 0; }
 
 /* signal card — overlaps the media on wide screens */
 .signal-card {
-  width: min(380px, 100%);
+  width: 100%;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
@@ -236,8 +236,46 @@ h1, h2, h3, p, dl, dd { margin: 0; }
   gap: 16px;
   box-shadow: 0 14px 34px -20px rgba(32, 29, 25, 0.22);
 }
+
+/* flip wrapper — front face is the illustrative sample, back face is the live
+   signal. Front drives the height; back is overlaid and hidden until flipped. */
+.signal-flip {
+  width: min(380px, 100%);
+  perspective: 1800px;
+  cursor: pointer;
+  outline: none;
+}
+.signal-flip__inner {
+  position: relative;
+  transition: transform 0.55s cubic-bezier(0.4, 0.1, 0.2, 1);
+  transform-style: preserve-3d;
+}
+.signal-flip:hover .signal-flip__inner,
+.signal-flip:focus-visible .signal-flip__inner,
+.signal-flip.is-flipped .signal-flip__inner {
+  transform: rotateY(180deg);
+}
+.signal-flip:focus-visible { border-radius: var(--r-md); box-shadow: 0 0 0 2px var(--green); }
+.signal-flip__face { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+.signal-flip__face--back {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  transform: rotateY(180deg);
+}
+.signal-flip__hint {
+  display: block;
+  margin-top: 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  text-align: center;
+}
+
 @media (min-width: 1001px) {
-  .signal-card {
+  .signal-flip {
     position: absolute;
     left: clamp(-40px, -2.4vw, -8px);
     top: 48%;
@@ -246,10 +284,14 @@ h1, h2, h3, p, dl, dd { margin: 0; }
 @media (max-width: 1000px) {
   .hero__inner { grid-template-columns: 1fr; gap: 40px; }
   .hero__media { max-width: 560px; margin-inline: auto; }
-  .signal-card { margin: -56px auto 0; }
+  .signal-flip { margin: -56px auto 0; }
 }
 @media (max-width: 560px) {
-  .signal-card { margin: 16px 0 0; box-shadow: none; }
+  .signal-flip { margin: 16px 0 0; }
+  .signal-card { box-shadow: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .signal-flip__inner { transition: none; }
 }
 
 .sc__row { display: flex; justify-content: space-between; gap: 12px; }
