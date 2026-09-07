@@ -72,6 +72,29 @@ blames the recipient.
 `process.exit()` when the tab closes, which turns a recoverable reload into an
 outage that needs a human.
 
+## "Navigation timeout of 30000 ms exceeded" at startup
+
+Almost always a stale Chrome profile lock, not the network.
+
+The linked account lives in the Chrome profile at
+`.sessions/_IGNORE_<sessionId>` — that directory *is* the linkage, so deleting
+it means scanning a QR again. Chrome guards it with
+`SingletonLock -> <host>-<pid>`. When the bridge dies without cleaning up —
+SIGKILL, an OOM, a crash, a power cut — the lock outlives the process, and the
+next launch does not fail loudly: it stalls, and 30 seconds later the bridge
+reports a *navigation* timeout while loading WhatsApp Web. The error points at
+the network, which is the wrong place to look.
+
+Startup now clears a lock whose pid is dead (a live pid is left alone — that
+means a second bridge is genuinely running) and resets Chrome's crashed-exit
+flag. If linking still fails it retries with a widening gap instead of parking
+in `failed` until someone notices.
+
+The bridge closes the browser on SIGINT/SIGTERM, but note that Chrome has been
+measured to leave the lock behind even then, so the boot-time cleanup is the
+thing that actually guarantees recovery — as it has to be, since SIGKILL and
+power loss cannot be caught.
+
 `npm test` reproduces the whole failure against a stubbed open-wa — no browser
 and no linked phone required.
 

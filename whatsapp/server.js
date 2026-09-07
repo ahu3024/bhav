@@ -246,6 +246,75 @@ async function sendWithRetry(chatId, body) {
   })
 }
 
+// --- the Chrome profile ------------------------------------------------------
+
+/**
+ * open-wa keeps the linked account in a Chrome profile beside the session data
+ * (browser.js:509 builds the path as `<sessionDataPath>/_IGNORE_<sessionId>`).
+ * That profile is the linkage — delete it and the phone has to scan a QR again.
+ */
+const PROFILE_DIR = path.join(SESSION_DIR, `_IGNORE_${SESSION_ID}`)
+
+/**
+ * Chrome refuses to reuse a profile another Chrome still holds, and marks it
+ * `SingletonLock -> <host>-<pid>`. If the process died without cleaning up —
+ * SIGKILL, an OOM, a crash, a power cut — the lock outlives it, and the next
+ * launch does not fail loudly: it stalls, and the bridge dies 30 seconds later
+ * on `Navigation timeout of 30000 ms exceeded` while loading WhatsApp Web. The
+ * error names the network, so it sends you looking in entirely the wrong place.
+ *
+ * A lock whose pid is gone is garbage. Clear it — but only then, because a live
+ * pid means a second bridge really is running and must not be trampled.
+ */
+function clearStaleProfileLock() {
+  const lock = path.join(PROFILE_DIR, 'SingletonLock')
+  let target
+  try {
+    target = fs.readlinkSync(lock)
+  } catch {
+    return // no lock, or not a symlink — nothing to clean up
+  }
+
+  const pid = Number(String(target).split('-').pop())
+  if (Number.isInteger(pid) && pid > 0) {
+    try {
+      process.kill(pid, 0) // signal 0 only asks "is this pid alive?"
+      console.warn(`[bridge] profile is locked by live pid ${pid} — is another bridge running?`)
+      return
+    } catch (e) {
+      if (e.code === 'EPERM') {
+        console.warn(`[bridge] profile locked by pid ${pid}, owned by another user — leaving it`)
+        return
+      }
+      /* ESRCH: the pid is gone, so the lock is stale */
+    }
+  }
+
+  for (const name of ['SingletonLock', 'SingletonCookie', 'SingletonSocket']) {
+    try {
+      fs.unlinkSync(path.join(PROFILE_DIR, name))
+    } catch {
+      /* already gone */
+    }
+  }
+  console.warn(`[bridge] cleared a stale Chrome profile lock (dead pid ${pid})`)
+
+  // Chrome also records the unclean exit and offers to restore the session on
+  // the next launch, which gets in the way of a headless boot.
+  const prefs = path.join(PROFILE_DIR, 'Default', 'Preferences')
+  try {
+    const d = JSON.parse(fs.readFileSync(prefs, 'utf8'))
+    if (d.profile && d.profile.exit_type !== 'Normal') {
+      d.profile.exit_type = 'Normal'
+      d.profile.exited_cleanly = true
+      fs.writeFileSync(prefs, JSON.stringify(d))
+      console.warn('[bridge] reset the profile\'s crashed-exit flag')
+    }
+  } catch {
+    /* no Preferences yet (first run), or unreadable — the launch decides */
+  }
+}
+
 // --- session liveness --------------------------------------------------------
 
 /**
@@ -351,6 +420,7 @@ function attachListeners(wa) {
 }
 
 async function connect() {
+  clearStaleProfileLock()
   client = await create({
     sessionId: SESSION_ID,
     sessionDataPath: SESSION_DIR,
@@ -415,14 +485,63 @@ async function start() {
   })
 
   startLivenessProbe()
+  await connectWithRetry()
+}
 
+/**
+ * Linking can fail for reasons that pass on their own — a slow network, a
+ * WhatsApp Web hiccup, a profile Chrome has not finished releasing. Dying into
+ * `failed` on the first attempt means the alerts stay down until a human
+ * notices, so keep trying with a widening gap.
+ */
+async function connectWithRetry(attempt = 1) {
   try {
     await connect()
   } catch (e) {
     state.status = 'failed'
     state.error = String((e && e.message) || e)
-    console.error('[bridge] failed to start:', state.error)
+    const wait = Math.min(60000, 5000 * 2 ** (attempt - 1))
+    console.error(
+      `[bridge] link attempt ${attempt} failed: ${state.error}; retrying in ${wait / 1000}s`,
+    )
+    await new Promise((r) => setTimeout(r, wait))
+    return connectWithRetry(attempt + 1)
   }
+}
+
+/**
+ * Close the browser on the way out so Chrome releases the profile lock and
+ * records a clean exit. Skipping this is what leaves the next boot stalling on
+ * a stale lock — and SIGKILL, which cannot be caught, is exactly why
+ * clearStaleProfileLock exists as the backstop.
+ */
+let shuttingDown = false
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.on(signal, async () => {
+    if (shuttingDown) return
+    shuttingDown = true
+    console.log(`\n[bridge] ${signal} — closing the browser cleanly`)
+    // Deliberately not client.kill(): open-wa asks the browser to close and
+    // then SIGKILLs its pid regardless (browser.js `kill`), which orphans work
+    // Chrome was in the middle of. Closing the browser directly is the tidier
+    // exit — though measured on this setup Chrome *still* leaves SingletonLock
+    // behind and still records exit_type "Crashed", so this is a courtesy, not
+    // a guarantee. clearStaleProfileLock on the next boot is the guarantee, and
+    // it has to be: SIGKILL, an OOM and a power cut cannot be caught here.
+    try {
+      const page = client && typeof client.getPage === 'function' && client.getPage()
+      const browser = page && !page.isClosed() && page.browser()
+      if (browser) {
+        await Promise.race([
+          browser.close(),
+          new Promise((r) => setTimeout(r, 10000)),
+        ])
+      }
+    } catch {
+      /* going down anyway; the next boot clears whatever is left */
+    }
+    process.exit(0)
+  })
 }
 
 // Opt-out arrives on WhatsApp but the subscriber list lives in the Python

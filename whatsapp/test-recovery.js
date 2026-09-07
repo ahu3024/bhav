@@ -69,6 +69,23 @@ require.cache[id] = Object.assign(new Module(id, null), {
   exports: stub,
 })
 
+// A profile left behind by a killed bridge: a lock naming a pid that no longer
+// exists, and Chrome's record of the unclean exit. Boot has to clear both, or
+// the launch stalls and dies on a 30s "Navigation timeout" that blames the
+// network. Built before server.js is required, because connect() cleans it.
+const fs = require('fs')
+const PROFILE = path.join(process.env.WA_SESSION_DIR, '_IGNORE_bhav')
+const DEAD_PID = 999999 // never a live pid on Linux (default pid_max is 32768+)
+fs.mkdirSync(path.join(PROFILE, 'Default'), { recursive: true })
+for (const n of ['SingletonLock', 'SingletonCookie', 'SingletonSocket']) {
+  try { fs.unlinkSync(path.join(PROFILE, n)) } catch {}
+}
+fs.symlinkSync(`cachyos-${DEAD_PID}`, path.join(PROFILE, 'SingletonLock'))
+fs.writeFileSync(
+  path.join(PROFILE, 'Default', 'Preferences'),
+  JSON.stringify({ profile: { exit_type: 'Crashed', exited_cleanly: false } }),
+)
+
 require(path.join(__dirname, 'server.js'))
 
 const base = `http://localhost:${PORT}`
@@ -83,6 +100,21 @@ const post = async (route, body) => {
 const health = async () => (await fetch(`${base}/health`)).json()
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
+/**
+ * SingletonLock is a symlink to `<host>-<pid>`, a path that never exists, so
+ * fs.existsSync follows it and answers false whether or not the lock is there.
+ * lstat looks at the link itself.
+ */
+const LOCK = () => path.join(PROFILE, 'SingletonLock')
+function lockPresent() {
+  try {
+    fs.lstatSync(LOCK())
+    return true
+  } catch {
+    return false
+  }
+}
+
 let failures = 0
 function check(name, ok, extra) {
   console.log(`${ok ? 'ok  ' : 'FAIL'}  ${name}${ok ? '' : '  ' + JSON.stringify(extra)}`)
@@ -92,6 +124,12 @@ function check(name, ok, extra) {
 ;(async () => {
   await sleep(300)
   check('links on boot', (await health()).connected)
+
+  check('boot cleared the stale profile lock', !lockPresent())
+  check('boot reset the crashed-exit flag',
+    JSON.parse(fs.readFileSync(path.join(PROFILE, 'Default', 'Preferences'), 'utf8'))
+      .profile.exit_type === 'Normal')
+
 
   const first = await post('/send', { to: '8618127913', body: 'hi' })
   check('sends while healthy', first.code === 200 && first.json.sent, first)
@@ -120,6 +158,14 @@ function check(name, ok, extra) {
   await sleep(900)
   const h2 = await health()
   check('the probe rebuilds an idle session', h2.reconnects === before + 1 && h2.status === 'connected', h2)
+
+  // A lock held by a process that is actually alive means a second bridge is
+  // running; trampling it would put two Chromes on one profile.
+  fs.symlinkSync(`cachyos-${process.pid}`, LOCK())
+  live.current.die()
+  await post('/send', { to: '8618127913', body: 'rebuild with a live lock' })
+  check('a lock held by a live pid is left alone', lockPresent())
+  try { fs.unlinkSync(LOCK()) } catch {}
 
   // A rebuild that cannot relink is an unavailable session, not a bad number.
   failCreate = true
