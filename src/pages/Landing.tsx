@@ -1,5 +1,4 @@
 import Hero from '../components/Hero'
-import SourceStrip from '../components/SourceStrip'
 import SecondOpinion from '../components/SecondOpinion'
 import NdviPanel from '../components/NdviPanel'
 import WeatherPanel from '../components/WeatherPanel'
@@ -14,7 +13,6 @@ export default function Landing() {
   return (
     <main>
       <Hero />
-      <SourceStrip />
       <div data-reveal>
         <SecondOpinion />
       </div>

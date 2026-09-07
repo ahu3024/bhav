@@ -200,11 +200,18 @@ export default function GetAlerts() {
             <div className="alerts__chat-head">Bhav</div>
             <div className="alerts__bubble">
               {bubble
-                ? bubble.split('\n').map((line, i) => (
-                    <span key={i} className="alerts__line">
-                      {renderBold(line)}
-                    </span>
-                  ))
+                ? bubble.split('\n').map((line, i) =>
+                    // The message separates its blocks with blank lines. An
+                    // empty span collapses to nothing, so those need to be a
+                    // spacer or the bubble reads as one dense wall.
+                    line ? (
+                      <span key={i} className="alerts__line">
+                        {renderBold(line)}
+                      </span>
+                    ) : (
+                      <span key={i} className="alerts__line alerts__line--gap" />
+                    ),
+                  )
                 : <span className="alerts__line">Loading this week’s signal…</span>}
               <span className="alerts__time">now</span>
             </div>
