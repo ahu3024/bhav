@@ -7,19 +7,35 @@ import HowItReads from '../components/HowItReads'
 import BacktestTeaser from '../components/BacktestTeaser'
 import GetAlerts from '../components/GetAlerts'
 import Limits from '../components/Limits'
+import { useReveal } from '../useReveal'
 
 export default function Landing() {
+  useReveal()
   return (
     <main>
       <Hero />
       <SourceStrip />
-      <SecondOpinion />
-      <NdviPanel />
-      <WeatherPanel />
-      <HowItReads />
-      <BacktestTeaser />
-      <Limits />
-      <GetAlerts />
+      <div data-reveal>
+        <SecondOpinion />
+      </div>
+      <div data-reveal>
+        <NdviPanel />
+      </div>
+      <div data-reveal>
+        <WeatherPanel />
+      </div>
+      <div data-reveal>
+        <HowItReads />
+      </div>
+      <div data-reveal>
+        <BacktestTeaser />
+      </div>
+      <div data-reveal>
+        <Limits />
+      </div>
+      <div data-reveal>
+        <GetAlerts />
+      </div>
     </main>
   )
 }

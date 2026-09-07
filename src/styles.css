@@ -19,8 +19,12 @@
   --font-sans: 'IBM Plex Sans', system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', monospace;
 
-  --r-sm: 8px;   /* buttons, tags */
-  --r-md: 10px;  /* cards, media */
+  --r-sm: 12px;  /* inputs, tags */
+  --r-md: 18px;  /* cards, media */
+  --r-pill: 999px; /* buttons */
+
+  /* one easing for everything that moves, so the site feels like one thing */
+  --ease: cubic-bezier(0.22, 0.9, 0.3, 1);
 
   --pad-x: clamp(20px, 5.5vw, 96px);
   --sect-y: clamp(72px, 10vw, 120px);
@@ -93,16 +97,24 @@ h1, h2, h3, p, dl, dd { margin: 0; }
   font-weight: 600;
   font-size: 16px;
   line-height: 1;
-  padding: 14px 24px;
+  padding: 15px 28px;
   border: 1px solid transparent;
-  border-radius: var(--r-sm);
+  border-radius: var(--r-pill);
   cursor: pointer;
-  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  transition:
+    background-color 0.18s var(--ease),
+    color 0.18s var(--ease),
+    border-color 0.18s var(--ease),
+    transform 0.18s var(--ease),
+    box-shadow 0.18s var(--ease);
 }
+.btn:hover { transform: translateY(-2px); }
+.btn:active { transform: translateY(0); }
+.btn:focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
 .btn--primary { background: var(--ink); color: #fff; }
-.btn--primary:hover { background: #332e28; }
+.btn--primary:hover { background: #332e28; box-shadow: 0 10px 24px -12px rgba(32, 29, 25, 0.7); }
 .btn--outline { background: transparent; color: var(--ink); border-color: var(--ink); }
-.btn--outline:hover { background: var(--ink); color: #fff; }
+.btn--outline:hover { background: var(--ink); color: #fff; box-shadow: 0 10px 24px -14px rgba(32, 29, 25, 0.6); }
 .btn--wa {
   font-size: 14px;
   padding: 10px 16px;
@@ -110,6 +122,7 @@ h1, h2, h3, p, dl, dd { margin: 0; }
   border-color: var(--orange);
   background: transparent;
   white-space: nowrap;
+  border-radius: var(--r-pill);
 }
 .btn--wa:hover { background: var(--orange); color: #fff; }
 
@@ -263,15 +276,6 @@ h1, h2, h3, p, dl, dd { margin: 0; }
   left: 0;
   right: 0;
   transform: rotateY(180deg);
-}
-.signal-flip__hint {
-  display: block;
-  margin-top: 8px;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.04em;
-  color: var(--muted);
-  text-align: center;
 }
 
 @media (min-width: 1001px) {
@@ -467,13 +471,19 @@ h1, h2, h3, p, dl, dd { margin: 0; }
 .bt-run {
   font-family: var(--font-sans);
   font-weight: 600;
-  font-size: 14px;
+  font-size: 15px;
   color: #fff;
   background: var(--ink);
   border: 0;
-  border-radius: var(--r-sm);
-  padding: 10px 18px;
+  border-radius: var(--r-pill);
+  padding: 12px 24px;
   cursor: pointer;
+  transition: transform 0.18s var(--ease), box-shadow 0.18s var(--ease), background 0.18s var(--ease);
+}
+.bt-run:hover:not(:disabled) {
+  transform: translateY(-2px);
+  background: #332e28;
+  box-shadow: 0 10px 22px -12px rgba(32, 29, 25, 0.7);
 }
 .bt-run:disabled { opacity: 0.55; cursor: progress; }
 
@@ -880,4 +890,438 @@ h1, h2, h3, p, dl, dd { margin: 0; }
 }
 @media (max-width: 460px) {
   .alerts__row { grid-template-columns: 1fr; }
+}
+
+/* ============================================================
+   Today's call — the plain-language page
+   ============================================================ */
+
+/* the highlighted "live" CTA: the one thing on the page to click */
+.btn--live {
+  position: relative;
+  background: var(--orange);
+  color: #fff;
+  border-color: var(--orange);
+  padding-left: 42px;
+  box-shadow: 0 8px 22px -10px rgba(201, 87, 44, 0.75);
+}
+.btn--live:hover { background: #b34a22; border-color: #b34a22; }
+.btn__pulse {
+  position: absolute;
+  left: 22px;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  margin-top: -4.5px;
+  border-radius: 50%;
+  background: #fff;
+}
+.btn__pulse::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: #fff;
+  animation: live-pulse 1.8s ease-out infinite;
+}
+@keyframes live-pulse {
+  0%   { transform: scale(1);   opacity: 0.9; }
+  100% { transform: scale(3.2); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .btn__pulse::after { animation: none; }
+}
+
+/* ---- the verdict banner ---- */
+.today__verdict {
+  padding-block: clamp(48px, 7vw, 80px);
+  border-bottom: 1px solid var(--line);
+}
+.today__verdict--green { background: #eef4ee; }
+.today__verdict--amber { background: #fbf3e3; }
+.today__verdict--red   { background: #fbeceb; }
+
+.today__where {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.today__word {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: clamp(52px, 10vw, 104px);
+  line-height: 1.02;
+  margin: 8px 0 12px;
+  color: var(--green);
+}
+.today__verdict--red .today__word { color: #a5301a; }
+.today__verdict--amber .today__word { color: #8a5a06; }
+.today__line {
+  font-family: var(--font-sans);
+  font-size: clamp(17px, 1.7vw, 21px);
+  line-height: 1.55;
+  color: var(--ink);
+  max-width: 46ch;
+}
+.today__money {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+  max-width: 46ch;
+}
+.today__amount {
+  font-family: var(--font-serif);
+  font-size: clamp(26px, 3.4vw, 38px);
+  color: var(--ink);
+}
+.today__caption { font-size: 14px; color: var(--muted); }
+.today__when {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 14px;
+  margin-top: 20px;
+}
+.today__when-k {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.today__when-v {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 18px;
+  color: var(--ink);
+}
+
+/* ---- the four inputs ---- */
+.four {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+  gap: 24px;
+  margin-top: 44px;
+}
+
+/* Each card carries its source colour as a variable so the accent bar, the
+   hover border and the corner glow all move together. */
+.fcard {
+  --accent: var(--green);
+  position: relative;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 26px 24px 24px;
+  transition: transform 0.28s var(--ease), box-shadow 0.28s var(--ease),
+    border-color 0.28s var(--ease);
+}
+/* the accent bar grows across the top on hover rather than just sitting there */
+.fcard::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 4px;
+  background: var(--accent);
+  transform: scaleX(0.18);
+  transform-origin: left;
+  transition: transform 0.4s var(--ease);
+}
+/* a soft wash of the accent, bottom-right, that lifts in on hover */
+.fcard::after {
+  content: '';
+  position: absolute;
+  right: -30%;
+  bottom: -55%;
+  width: 75%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0;
+  transition: opacity 0.4s var(--ease);
+  pointer-events: none;
+}
+.fcard:hover {
+  transform: translateY(-6px);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
+  box-shadow: 0 22px 44px -28px rgba(32, 29, 25, 0.5);
+}
+.fcard:hover::before { transform: scaleX(1); }
+.fcard:hover::after { opacity: 0.06; }
+
+.fcard--satellite { --accent: #2f6d54; }
+.fcard--weather   { --accent: #3d7fa6; }
+.fcard--market    { --accent: #c9572c; }
+.fcard--history   { --accent: #7a6ba8; }
+
+.fcard__head {
+  position: relative;
+  font-family: var(--font-sans);
+  font-weight: 700;
+  font-size: 20px;
+  line-height: 1.25;
+  color: var(--ink);
+  margin-bottom: 20px;
+}
+.fcard__rows { position: relative; display: flex; flex-direction: column; gap: 14px; }
+.fcard__row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+.fcard__row:last-child { border-bottom: 0; padding-bottom: 0; }
+.fcard__row dt { font-size: 15px; line-height: 1.4; color: var(--muted); }
+.fcard__row dd {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 19px;
+  line-height: 1.35;
+  color: var(--ink);
+}
+.fcard__note {
+  position: relative;
+  margin-top: 18px;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+/* ---- what mattered most ---- */
+.today__drivers { margin-top: 44px; }
+.today__drivers-h {
+  font-family: var(--font-sans);
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--ink);
+  margin-bottom: 16px;
+}
+.drivers { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.driver {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+}
+.driver__dot { width: 10px; height: 10px; border-radius: 50%; }
+.driver__dot--sell { background: var(--orange); }
+.driver__dot--hold { background: var(--green); }
+.driver__text { font-size: 15px; font-weight: 500; color: var(--ink); }
+.driver__src {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.driver__push {
+  font-size: 13px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+@media (max-width: 700px) {
+  .driver { grid-template-columns: 14px minmax(0, 1fr); }
+  .driver__src, .driver__push { grid-column: 2; }
+}
+
+/* ---- last year ---- */
+.lastyear { background: var(--bg); }
+.ly {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 20px;
+  margin-top: 32px;
+}
+.ly__col {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ly__col--hit  { border-color: #b6ceb9; background: #f3f8f3; }
+.ly__col--miss { border-color: #e4c3bd; background: #fdf5f3; }
+.ly__k {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.ly__verdict, .ly__big {
+  font-family: var(--font-serif);
+  font-size: clamp(28px, 3.2vw, 38px);
+  line-height: 1.05;
+  color: var(--ink);
+}
+.ly__reason { font-size: 14px; line-height: 1.55; color: var(--muted); }
+
+.today__next {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+/* the two-outcome comparison — the point of the backtest page */
+.bt-compare {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin: 4px 0;
+}
+.bt-compare__col {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg);
+}
+.bt-compare__col--ours { background: #f1f7f2; border-color: #b6ceb9; }
+.bt-compare__k {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.bt-compare__v {
+  font-family: var(--font-serif);
+  font-size: clamp(28px, 3.4vw, 40px);
+  line-height: 1.05;
+  color: var(--ink);
+}
+.bt-compare__note { font-size: 13px; color: var(--muted); }
+.bt-presets__k {
+  flex-basis: 100%;
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+
+/* ============================================================
+   Motion — reveal on scroll, hover lift, staggered entry
+   ============================================================ */
+
+[data-reveal] {
+  opacity: 0;
+  transform: translateY(22px);
+  transition: opacity 0.6s var(--ease), transform 0.6s var(--ease);
+  will-change: opacity, transform;
+}
+[data-reveal].is-revealed {
+  opacity: 1;
+  transform: none;
+}
+/* Children of a revealed grid come in one after another. The delay is set from
+   an index custom property so any list can opt in without new rules. */
+[data-reveal-stagger] > * {
+  opacity: 0;
+  transform: translateY(18px);
+  transition: opacity 0.55s var(--ease), transform 0.55s var(--ease);
+  transition-delay: calc(var(--i, 0) * 90ms);
+}
+[data-reveal-stagger].is-revealed > * {
+  opacity: 1;
+  transform: none;
+}
+
+/* the verdict word lands rather than just appearing */
+.today__word {
+  animation: verdict-in 0.7s var(--ease) both;
+}
+@keyframes verdict-in {
+  from { opacity: 0; transform: translateY(16px) scale(0.97); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* the driver rows sweep a faint tint on hover, so the list feels alive */
+.driver {
+  border-radius: var(--r-sm);
+  padding-inline: 12px;
+  margin-inline: -12px;
+  transition: background 0.22s var(--ease), transform 0.22s var(--ease);
+}
+.driver:hover { background: var(--bg); transform: translateX(4px); }
+.driver__dot { transition: transform 0.22s var(--ease); }
+.driver:hover .driver__dot { transform: scale(1.35); }
+
+/* last-year and comparison cards lift the same way the factor cards do */
+.ly__col,
+.bt-compare__col {
+  transition: transform 0.28s var(--ease), box-shadow 0.28s var(--ease);
+}
+.ly__col:hover,
+.bt-compare__col:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 20px 40px -26px rgba(32, 29, 25, 0.45);
+}
+
+/* the money figure counts itself in */
+.today__amount { animation: rise-in 0.7s 0.12s var(--ease) both; }
+.today__money  { animation: rise-in 0.7s 0.06s var(--ease) both; }
+.today__when   { animation: rise-in 0.7s 0.18s var(--ease) both; }
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* nav underline that grows from the left */
+.nav-links a {
+  position: relative;
+  padding-block: 4px;
+}
+.nav-links a::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  width: 100%;
+  background: var(--green);
+  border-radius: 2px;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.24s var(--ease);
+}
+.nav-links a:hover::after,
+.nav-links a.is-active::after { transform: scaleX(1); }
+
+/* section cards on the landing page get the same soft corners */
+.fingerprint,
+.bt-panel,
+.signal-card,
+.media-frame { border-radius: var(--r-md); }
+
+@media (prefers-reduced-motion: reduce) {
+  [data-reveal],
+  [data-reveal-stagger] > * {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+  .today__word,
+  .today__amount,
+  .today__money,
+  .today__when { animation: none; }
+  .btn:hover,
+  .fcard:hover,
+  .ly__col:hover,
+  .bt-compare__col:hover,
+  .driver:hover { transform: none; }
 }

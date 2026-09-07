@@ -166,8 +166,14 @@ def _note(row: pd.Series) -> str:
     heat = _get(row, "heat_days_14") or 0
     rain_anom = _get(row, "rain_anom_30") or 0
 
+    # A run this long is the monsoon itself, not a passing spell. Reporting it
+    # as "97 straight wet days — lifting has stopped" is technically true, reads
+    # as a broken number, and overstates a season everyone expects to be wet.
+    if spell >= 21:
+        return ("Monsoon rain is still running — the fields will not be dry "
+                "enough to lift until it breaks.")
     if spell >= 3:
-        return (f"{int(spell)} straight wet days — lifting has stopped; "
+        return (f"{int(spell)} wet days in a row — lifting has stopped for now; "
                 "expect arrivals to stall, then bunch up.")
     if rot >= 0.5:
         return ("Warm and humid — stored onion will not keep, so holding is "

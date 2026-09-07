@@ -6,7 +6,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node --env-file-if-exists=.env server.js",
-    "link": "node --env-file-if-exists=.env server.js --show-qr"
+    "link": "node --env-file-if-exists=.env server.js --show-qr",
+    "test": "node test-recovery.js"
   },
   "dependencies": {
     "@open-wa/wa-automate": "^4.76.0",

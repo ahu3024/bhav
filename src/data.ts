@@ -5,55 +5,55 @@
 // work from either page — the hash router treats anything without a leading
 // slash as the landing route.
 export const nav = [
+  { label: "Today's call", href: '#/today' },
+  { label: 'Check a past date', href: '#/backtest' },
   { label: 'How it works', href: '#how' },
-  { label: 'Satellite', href: '#satellite' },
-  { label: 'Backtest', href: '#/backtest' },
   { label: 'Why trust it', href: '#trust' },
-  { label: 'Limits', href: '#limits' },
+  { label: 'What it cannot do', href: '#limits' },
 ]
 
 export const signal = {
-  ref: 'BHAV / SIGNAL 104',
+  ref: 'EXAMPLE',
   date: '06 SEP 2026',
   market: 'NASHIK · ONION',
   action: 'WAIT',
-  price: '+₹280 / QTL',
+  price: '+₹280 / quintal',
   factors: [
-    { text: '40% crop still maturing', src: 'Sentinel-2' },
-    { text: '14 seasons matched', src: 'Historical' },
-    { text: '4–6 days optimal window', src: 'Mandi flow' },
+    { text: 'Crop is still filling out', src: 'Satellite' },
+    { text: 'Dry enough to lift and cure', src: 'Weather' },
+    { text: 'Little onion arriving yet', src: 'Mandi' },
   ],
   confidence: 78,
-  foot: 'View Raw NDVI →',
+  foot: 'An example — hover for today’s real call →',
 }
 
 export const sources = [
-  { label: 'Satellite', desc: 'Crop health monitoring via Sentinel-2' },
-  { label: 'Weather', desc: 'Local humidity & rainfall triggers' },
-  { label: 'Mandi', desc: 'APMC real-time price & volume flow' },
-  { label: 'History', desc: '9-year pattern-matched validation' },
+  { label: 'Satellite', desc: 'Pictures of your fields from space, every few days' },
+  { label: 'Weather', desc: 'Rain, heat and damp on your own block' },
+  { label: 'Mandi', desc: 'What onion is actually fetching, and how much is arriving' },
+  { label: 'Past seasons', desc: 'Nine years of what happened after weeks like this one' },
 ]
 
 export const steps = [
   {
     n: '01',
-    label: 'SATELLITE NDVI',
-    desc: 'We pull 10m-resolution crop imagery for your district. NDVI tells us growth stage, stress, and how much crop is still maturing.',
+    label: 'WE LOOK AT YOUR CROP FROM SPACE',
+    desc: 'A satellite passes over Nashik every few days and photographs the fields. From how green they are, we can tell how far along the crop is — still growing, fully grown, or drying down ready to harvest.',
   },
   {
     n: '02',
-    label: 'WEATHER OVERLAY',
-    desc: 'Local temperature, rainfall, and humidity are layered on. These shift harvest timing and quality.',
+    label: 'WE CHECK THE WEATHER ON THE GROUND',
+    desc: 'Rain, heat and damp decide two things: whether you can get the crop out of the ground this fortnight, and whether it will keep once it is stored.',
   },
   {
     n: '03',
-    label: 'MANDI ARRIVALS + PRICE',
-    desc: 'Daily price and volume data from your nearest APMC mandi. Thin arrivals + healthy crop = likely price rise.',
+    label: 'WE WATCH THE MANDI',
+    desc: 'Every day we take the rate and how much onion is arriving at your nearest mandis. Plenty of buyers and little arriving usually means the rate holds up.',
   },
   {
     n: '04',
-    label: 'PATTERN MATCH',
-    desc: "We compare this week's signal fingerprint against 9 years of weekly data. If 14 out of 18 similar weeks saw prices rise within 4–6 days, that's the basis for WAIT.",
+    label: 'WE COMPARE IT WITH PAST SEASONS',
+    desc: 'Then we look for weeks since 2016 that looked like this one — same crop stage, same weather, same market — and see what the rate actually did in the days that followed. That is where the answer comes from.',
   },
 ]
 
@@ -73,15 +73,15 @@ export const fingerprint: { id: string; rows: FpRow[] } = {
 
 export const limits = [
   {
-    h: 'No guarantee of profit.',
-    p: 'Patterns describe probability, not certainty. A 78% confidence still means 22% of similar weeks went the other way.',
+    h: 'We can be wrong.',
+    p: 'This is a pattern, not a promise. Even when we are fairly sure, some weeks still go the other way — and we show you those on the past-dates page rather than hiding them.',
   },
   {
-    h: 'No real-time trading.',
-    p: 'Bhav generates a signal once per week. It is not a live trading tool or price ticker.',
+    h: 'We are not a live rate ticker.',
+    p: 'Bhav gives one call a week. If you need the rate right now, your mandi board is faster and more exact.',
   },
   {
-    h: 'No replacement for local knowledge.',
-    p: "If you know something about your field, your buyer, or your mandi that data doesn't capture — trust that first.",
+    h: 'You know things we do not.',
+    p: 'If you know something about your field, your buyer or your mandi that we cannot see from a satellite — trust that first. This is a second opinion, not an instruction.',
   },
 ]

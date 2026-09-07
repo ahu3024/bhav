@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getWeather, friendlyError, type WeatherSeries } from '../api'
+import { HARVEST_WINDOW, ROT_RISK } from '../plain'
 
 const W = 720
 const H = 220
@@ -29,18 +30,18 @@ export default function WeatherPanel() {
     <section className="section section--white ndvi weather" id="weather">
       <div className="container inner">
         <div className="ndvi__intro">
-          <h2 className="section__title">The weather that moves the price</h2>
+          <h2 className="section__title">The weather on your fields</h2>
           <p className="prose">
-            Rainfall and heat decide when the crop comes off the field. Humidity
-            decides whether it can be stored once it does — and a farmer who
-            can’t store is a forced seller. That is how a wet fortnight becomes a
-            glut two weeks later, so the overlay tracks both questions rather
-            than raw millimetres.
+            Rain and heat decide when the crop can come out of the ground. Damp
+            decides whether it will keep once it does — and a farmer who cannot
+            store has to sell, whatever the rate. That is how one wet fortnight
+            turns into everybody selling at once two weeks later. So we track
+            those two questions, not just how many millimetres fell.
           </p>
         </div>
 
         {err && <p className="bt-msg bt-msg--err">{err}</p>}
-        {!data && !err && <p className="bt-msg">Reading the archive…</p>}
+        {!data && !err && <p className="bt-msg">Looking up the weather…</p>}
 
         {data && (
           <>
@@ -58,36 +59,36 @@ function WeatherStats({ data }: { data: WeatherSeries }) {
   const c = data.current
   const stats = [
     {
-      k: 'Harvest window',
-      v: c.harvest_window,
-      note: 'can it be lifted & cured',
+      k: 'Can you lift the crop',
+      v: HARVEST_WINDOW[c.harvest_window] ?? c.harvest_window,
+      note: 'this fortnight',
       warn: c.harvest_window === 'Poor',
     },
     {
-      k: 'Storage risk',
-      v: c.rot_risk,
-      note: 'can it be held',
+      k: 'Will stored crop keep',
+      v: ROT_RISK[c.rot_risk] ?? c.rot_risk,
+      note: 'if you hold it back',
       warn: c.rot_risk === 'High',
     },
     {
       k: 'Dry days',
-      v: c.dry_days_14 == null ? '—' : `${c.dry_days_14}/${c.window_days}`,
-      note: 'workable days',
+      v: c.dry_days_14 == null ? '—' : `${c.dry_days_14} of ${c.window_days}`,
+      note: 'days you could work',
     },
     {
       k: 'Humidity',
       v: c.humidity_mean_14 == null ? '—' : `${Math.round(c.humidity_mean_14)}%`,
       note:
         c.humidity_anom_14 == null
-          ? 'fortnight mean'
+          ? 'over two weeks'
           : `${c.humidity_anom_14 >= 0 ? '+' : '−'}${Math.abs(
               Math.round(c.humidity_anom_14),
-            )} vs normal`,
+            )} against a normal year`,
     },
     {
-      k: 'Heat days',
+      k: 'Very hot days',
       v: c.heat_days_14 == null ? '—' : `${c.heat_days_14}`,
-      note: 'above 35°C',
+      note: 'hotter than 35°C',
     },
   ]
 

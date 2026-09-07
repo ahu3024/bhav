@@ -576,9 +576,12 @@ free-form send with `21654` *and* blocked the Content API needed to create the
 template it demanded.)
 
 open-wa drives a real WhatsApp account instead — no window, no template. The
-costs are real and worth stating: a phone must link the session once and stay
-linked, the account can be banned if it is used to spam, and this is an
-unofficial automation of WhatsApp Web rather than a supported API.
+costs are real: a phone must link the session once and stay linked, the account
+can be banned if it is used to spam, this is an unofficial automation of
+WhatsApp Web rather than a supported API, and **unlicensed open-wa will only
+message numbers already saved as contacts on the linked phone** — anything else
+returns `Not a contact`. Save the recipient on the sending handset, or buy a
+licence at <https://get.openwa.dev>.
 
 The library is Node, so it runs as a separate process next to this API; the
 Python side (`bhav/whatsapp.py`) only speaks HTTP to it.
@@ -606,8 +609,8 @@ out; `explain_error()` maps a dead bridge, an unlinked session and a token
 mismatch to the specific thing to go and fix, and the broadcast script prints it
 as `FIX:`.
 
-**Status.** Verified end to end up to the scan: the bridge boots, reaches
-WhatsApp Web, and serves a live pairing QR through the API; the Python client,
-the broadcast script and the registration UI all read that state correctly. The
-final step — scanning the QR with the sending phone — needs a physical handset,
-and no message has been delivered yet.
+**Status.** Delivering. The session is linked to a real handset and messages
+have arrived on recipient phones with WhatsApp message ids logged in
+`message_log`. The one live limitation is the contact restriction above: sends
+to saved contacts succeed, sends to unknown numbers fail with `Not a contact`
+and `explain_error()` says what to do about it.

@@ -158,7 +158,13 @@ export type DeliveryStatus = {
 
 export type SubscribeResult = {
   subscriber: { phone: string; lang: string; active: number }
-  welcome: { sent: boolean; channel?: string; reason?: string } | null
+  welcome: {
+    sent: boolean
+    channel?: string
+    reason?: string
+    /** The specific thing to go and do about `reason`, when we know it. */
+    hint?: string
+  } | null
 }
 
 async function post<T>(path: string, body: unknown): Promise<T> {

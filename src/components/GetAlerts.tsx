@@ -81,10 +81,11 @@ export default function GetAlerts() {
       if (w?.sent) {
         setMsg(`Registered. The current signal is on its way to ${res.subscriber.phone} over ${w.channel}.`)
       } else {
+        // Show the fix, not the raw provider string — "Not a contact. Unlock
+        // this feature..." tells a farmer nothing about what to do next.
         setMsg(
-          `Registered ${res.subscriber.phone}. The message could not be delivered yet` +
-            (w?.reason ? ` — ${w.reason}` : '') +
-            '. You will get the next weekly signal once delivery is set up.',
+          `Registered ${res.subscriber.phone}, but the message could not be ` +
+            `delivered yet. ${w?.hint || w?.reason || ''}`.trim(),
         )
       }
       setState('done')

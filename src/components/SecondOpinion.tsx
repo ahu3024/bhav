@@ -2,11 +2,12 @@ export default function SecondOpinion() {
   return (
     <section className="section section--white second-opinion" id="trust">
       <div className="container inner">
-        <h2 className="section__title">Not a forecast. A second opinion.</h2>
+        <h2 className="section__title">A second opinion, not an order.</h2>
         <p className="prose">
-          Bhav does not claim to predict markets with certainty. It compares current
-          signals against historical patterns to give farmers another data-backed
-          input before they decide when to sell.
+          Nobody can tell you exactly what the rate will do. What Bhav can do is
+          check this week against nine years of weeks that looked the same, and
+          tell you how those usually turned out — so you have one more thing to
+          weigh before you decide to sell or hold.
         </p>
         <div className="rule" />
       </div>

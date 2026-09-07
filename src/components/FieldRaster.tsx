@@ -7,7 +7,7 @@ export default function FieldRaster() {
   return (
     <img
       src="/field.png"
-      alt="Sentinel-2 aerial view of the Nashik onion belt"
+      alt="Onion fields near Nashik seen from a satellite"
       loading="eager"
       decoding="async"
     />
