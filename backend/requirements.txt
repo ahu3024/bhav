@@ -14,5 +14,5 @@ uvicorn[standard]>=0.29
 # Satellite NDVI
 earthengine-api>=0.1.390
 
-# WhatsApp delivery goes straight to Meta's Graph API over `requests`
-# (already required above) — no vendor SDK.
+# WhatsApp delivery is the Node open-wa service under whatsapp/; this side
+# only speaks HTTP to it over `requests` (already required above).

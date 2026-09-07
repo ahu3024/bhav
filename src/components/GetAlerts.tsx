@@ -3,6 +3,7 @@ import {
   getMessagePreviews,
   getDeliveryStatus,
   subscribe,
+  whatsappQrUrl,
   friendlyError,
   LANG_NAMES,
   type Lang,
@@ -28,6 +29,12 @@ export default function GetAlerts() {
   const [state, setState] = useState<'idle' | 'sending' | 'done' | 'error'>('idle')
   const [msg, setMsg] = useState('')
 
+  // open-wa rotates the pairing QR every ~20s and the session flips to linked
+  // the moment someone scans it, so this panel has to keep looking rather than
+  // read once — otherwise it shows a dead QR, or keeps asking for a scan that
+  // already happened.
+  const [qrNonce, setQrNonce] = useState(0)
+
   useEffect(() => {
     let alive = true
     getMessagePreviews()
@@ -35,13 +42,28 @@ export default function GetAlerts() {
       .catch(() => {
         /* backend down — the form still explains itself */
       })
-    getDeliveryStatus()
-      .then((d) => alive && setDelivery(d))
-      .catch(() => {})
+
+    const poll = () =>
+      getDeliveryStatus()
+        .then((d) => alive && setDelivery(d))
+        .catch(() => {})
+    poll()
+    const statusTimer = setInterval(poll, 5000)
+    const qrTimer = setInterval(() => alive && setQrNonce((n) => n + 1), 15000)
     return () => {
       alive = false
+      clearInterval(statusTimer)
+      clearInterval(qrTimer)
     }
   }, [])
+
+  // Once linked there is nothing left to poll for.
+  useEffect(() => {
+    if (!delivery?.whatsapp_ready) return
+    setQrNonce(0)
+  }, [delivery?.whatsapp_ready])
+
+  const qrSrc = `${whatsappQrUrl()}?n=${qrNonce}`
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -163,19 +185,33 @@ export default function GetAlerts() {
 
             {delivery && !delivery.configured && (
               <p className="alerts__note">
-                WhatsApp delivery isn’t configured yet — set{' '}
-                <code>WHATSAPP_ACCESS_TOKEN</code> and{' '}
-                <code>WHATSAPP_PHONE_NUMBER_ID</code> in{' '}
-                <code>backend/.env</code>. You can still register; the next
-                weekly signal will go out once it is.
+                The WhatsApp bridge isn’t running — start it with{' '}
+                <code>npm start</code> in <code>whatsapp/</code>. You can still
+                register; the next weekly signal goes out once it is up.
               </p>
             )}
-            {delivery?.configured && !delivery.template_ready && (
+            {delivery?.configured && delivery.qr_available && (
+              <div className="alerts__note alerts__pair">
+                <p>
+                  The sending account isn’t linked yet. Scan this from the phone
+                  that will send the alerts — WhatsApp → Linked devices → Link a
+                  device.
+                </p>
+                <img
+                  className="alerts__qr"
+                  src={qrSrc}
+                  alt="WhatsApp pairing QR code"
+                  width={180}
+                  height={180}
+                />
+              </div>
+            )}
+            {delivery?.whatsapp_ready && (
               <p className="alerts__note">
-                Meta only allows a free-form message within 24 hours of your last
-                message to us. Registering right after messaging the number works;
-                otherwise an approved template is needed
-                (<code>WHATSAPP_TEMPLATE_NAME</code>).
+                Sending live from{' '}
+                <code>{delivery.linked_number ?? 'the linked account'}</code> over
+                open-wa — no 24-hour window, so the signal reaches you whether or
+                not you have messaged us before.
               </p>
             )}
           </form>

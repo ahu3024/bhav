@@ -131,15 +131,28 @@ export type MessagePreview = {
   texts: Record<Lang, string>
 }
 
+/**
+ * Delivery runs on open-wa, which drives a real WhatsApp account through
+ * WhatsApp Web — so there is no 24-hour window and no approved template to
+ * wait on. What can go wrong instead is the session: the bridge has to be
+ * running, and a phone has to have scanned the pairing QR.
+ */
 export type DeliveryStatus = {
   provider: string
+  /** Is the bridge process reachable at all. */
   configured: boolean
-  phone_number_id: string | null
-  api_version: string
-  template_name: string | null
-  /** Without a template, sends outside a recipient's 24h window cannot go. */
-  template_ready: boolean
+  bridge_url: string
+  /** starting | qr | connected | failed | unreachable */
+  session_status: string
+  /** The phone number the session is linked to, once it is. */
+  linked_number: string | null
+  /** A pairing QR is waiting to be scanned at /message/qr. */
+  qr_available: boolean
+  /** The only field that means "a message will actually go out". */
   whatsapp_ready: boolean
+  sent?: number
+  failed?: number
+  reason?: string | null
   credentials?: { ok: boolean; reason?: string; display_phone_number?: string }
 }
 
@@ -171,6 +184,8 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 export const getMessagePreviews = () =>
   post<MessagePreview>('/message/preview/all', {})
 export const getDeliveryStatus = () => get<DeliveryStatus>('/message/status')
+/** The open-wa pairing QR. 409s once the session is linked. */
+export const whatsappQrUrl = () => `${BASE}/message/qr`
 export const subscribe = (body: {
   phone: string
   name?: string

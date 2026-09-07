@@ -23,8 +23,8 @@ load_dotenv(BACKEND_DIR / ".env")
 
 from bhav.alert_engine import build_alert          # noqa: E402
 from bhav.features import build_features           # noqa: E402
-from bhav.message import (  # noqa: E402
-    build_message,
+from bhav.message import build_message                            # noqa: E402
+from bhav.whatsapp import (  # noqa: E402
     send_alert,
     verify_credentials,
     whatsapp_status,
@@ -43,27 +43,22 @@ def main() -> int:
     ap.add_argument("--to", help="one number, instead of the subscriber list")
     ap.add_argument("--lang", default=None, help="override language (en|hi|mr)")
     ap.add_argument("--date", default=None, help="signal as of YYYY-MM-DD")
-    ap.add_argument("--channel", default="whatsapp",
-                    choices=["whatsapp", "template", "text_only"])
     ap.add_argument("--market", default="Lasalgaon")
     args = ap.parse_args()
 
     status = whatsapp_status()
-    print(f"Meta WhatsApp Cloud API ({status['api_version']}): "
-          f"configured={status['configured']}")
-    print(f"  phone_number_id={status['phone_number_id']} "
-          f"template={status['template_name'] or '(none)'}")
-    if status["configured"]:
-        creds = verify_credentials()
-        if creds.get("ok"):
-            print(f"  sender: {creds.get('display_phone_number')} "
-                  f"({creds.get('verified_name')}) "
-                  f"quality={creds.get('quality_rating')}")
+    print(f"open-wa bridge at {status['bridge_url']}: "
+          f"session={status['session_status']}")
+    creds = verify_credentials()
+    if creds.get("ok"):
+        print(f"  linked as {creds.get('display_phone_number') or 'unknown number'}")
+    else:
+        print(f"  NOT READY: {creds.get('reason')}")
+        if status.get("qr_available"):
+            print("  A pairing QR is waiting — scan it from the sending phone:")
+            print("    open http://localhost:8000/message/qr")
         else:
-            print(f"  CREDENTIAL CHECK FAILED: {creds.get('reason')}")
-    if not status["template_ready"]:
-        print("  NOTE: no WHATSAPP_TEMPLATE_NAME — sends outside a recipient's")
-        print("        24-hour window will fail with nothing to fall back to.")
+            print("  Start the bridge:  cd whatsapp && npm start")
     print()
 
     alert = build_alert(args.date or _latest_date(), persist=False)
@@ -72,8 +67,7 @@ def main() -> int:
     print()
 
     if args.to:
-        recipients = [{"phone": args.to, "lang": args.lang or "en",
-                       "channel": args.channel}]
+        recipients = [{"phone": args.to, "lang": args.lang or "en"}]
     else:
         df = active_subscribers()
         if df.empty:
@@ -83,8 +77,7 @@ def main() -> int:
                   '-d \'{"phone":"+919876543210","lang":"mr"}\'')
             return 0
         recipients = [
-            {"phone": r["phone"], "lang": args.lang or r.get("lang") or "en",
-             "channel": args.channel or r.get("channel")}
+            {"phone": r["phone"], "lang": args.lang or r.get("lang") or "en"}
             for _, r in df.iterrows()
         ]
 
@@ -99,14 +92,12 @@ def main() -> int:
         print("  " + text.replace("\n", "\n  "))
         if not args.send:
             continue
-        result = send_alert(r["phone"], text, channel=r["channel"])
+        result = send_alert(r["phone"], text)
         log_send(r["phone"], alert.date, r["lang"], result, text)
         sent += bool(result.get("sent"))
         flag = "OK" if result.get("sent") else "FAILED"
         detail = result.get("sid") or result.get("reason", "")
-        extra = " (fell back to template)" if result.get("fell_back") else ""
-        kind = result.get("kind", "")
-        print(f"  -> {flag} via {result.get('channel')}/{kind}{extra}: {detail}")
+        print(f"  -> {flag} via open-wa: {detail}")
         if result.get("hint"):
             print(f"     FIX: {result['hint']}")
 

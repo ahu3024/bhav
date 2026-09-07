@@ -22,6 +22,16 @@ CALIBRATOR_PATH = MODELS_DIR / "calibrator.pkl"
 for _d in (RAW_DIR, MODELS_DIR):
     _d.mkdir(parents=True, exist_ok=True)
 
+# Every entry point imports this module, so loading .env here means uvicorn, the
+# scripts and a bare REPL all see the same configuration. Without it the API
+# silently ran with no WhatsApp bridge token and no Earth Engine project.
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(BACKEND_DIR / ".env")
+except ImportError:  # python-dotenv is in requirements; don't hard-fail without it
+    pass
+
 # --- Target crop / district -------------------------------------------------
 
 CROP = "onion"

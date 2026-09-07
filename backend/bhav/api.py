@@ -9,13 +9,17 @@
     POST /partial-sell
     POST /message/preview      {date?, lang}
     POST /message/send         {to, date?, lang}
+    GET  /message/status       open-wa session state
+    GET  /message/qr           pairing QR while the session is unlinked
+    POST /subscribe            {phone, lang, ...}
+    POST /broadcast            {dry_run}
     GET  /model/info
 """
 
 from __future__ import annotations
 
 import pandas as pd
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -35,9 +39,10 @@ from .config import (
     NDVI_MATURITY_THRESHOLD,
 )
 from .db import read_df
-from .message import (
-    LANGS,
-    build_message,
+from .message import LANGS, build_message
+from .whatsapp import (
+    check_number,
+    qr_png,
     send_alert,
     verify_credentials,
     whatsapp_status,
@@ -47,6 +52,7 @@ from .subscribers import (
     log_send,
     recent_log,
     register,
+    resubscribe,
     summary as subscriber_summary,
     unsubscribe,
 )
@@ -163,7 +169,6 @@ def message_preview_all(body: MessageIn):
 
 class SendIn(MessageIn):
     to: str
-    channel: str = "whatsapp"     # whatsapp | template | text_only
 
 
 @app.post("/message/send")
@@ -171,7 +176,7 @@ def message_send(body: SendIn):
     alert_obj = build_alert(body.date or _latest_date(), persist=False)
     text = build_message(alert_obj, crop=CROP.capitalize(),
                          market=body.market, lang=body.lang)
-    result = send_alert(body.to, text, channel=body.channel)
+    result = send_alert(body.to, text)
     log_send(body.to, alert_obj.date, body.lang, result, text)
     return result
 
@@ -210,7 +215,7 @@ def subscribe(body: SubscribeIn):
             alert_obj = build_alert(_latest_date(), persist=False)
             text = build_message(alert_obj, crop=CROP.capitalize(),
                                  lang=body.lang)
-            result = send_alert(sub["phone"], text, channel=body.channel)
+            result = send_alert(sub["phone"], text)
             log_send(sub["phone"], alert_obj.date, body.lang, result, text)
             out["welcome"] = result
         except NOT_PROVISIONED as e:
@@ -225,6 +230,38 @@ class UnsubscribeIn(BaseModel):
 @app.post("/unsubscribe")
 def unsubscribe_ep(body: UnsubscribeIn):
     return unsubscribe(body.phone)
+
+
+@app.post("/resubscribe")
+def resubscribe_ep(body: UnsubscribeIn):
+    """Opt back in. The bridge posts here when someone replies START."""
+    return resubscribe(body.phone)
+
+
+@app.get("/message/qr")
+def message_qr():
+    """The open-wa pairing QR, as a PNG, while the session is unlinked.
+
+    This is how the sending phone gets attached: open it, scan it from
+    WhatsApp -> Linked devices. Once linked it 409s, which is the success case.
+    """
+    png = qr_png()
+    if png is None:
+        status = whatsapp_status()
+        raise HTTPException(
+            409,
+            "no pairing QR right now — "
+            + ("the session is already linked" if status["whatsapp_ready"]
+               else f"bridge session is '{status['session_status']}'"),
+        )
+    return Response(content=png, media_type="image/png",
+                    headers={"Cache-Control": "no-store"})
+
+
+@app.get("/message/check")
+def message_check(phone: str = Query(..., description="number to test")):
+    """Is this number actually on WhatsApp? Sends nothing."""
+    return check_number(phone)
 
 
 @app.get("/subscribers")
@@ -273,8 +310,7 @@ def broadcast_ep(body: BroadcastIn):
             results.append({"phone": row["phone"], "lang": lang,
                             "sent": False, "dry_run": True, "preview": text})
             continue
-        result = send_alert(row["phone"], text,
-                            channel=row.get("channel") or "whatsapp")
+        result = send_alert(row["phone"], text)
         log_send(row["phone"], alert_obj.date, lang, result, text)
         results.append({"phone": row["phone"], "lang": lang, **result})
 

@@ -816,6 +816,19 @@ h1, h2, h3, p, dl, dd { margin: 0; }
   border-radius: 3px;
 }
 
+/* open-wa pairing panel — only visible while the session is unlinked */
+.alerts__pair { display: flex; flex-direction: column; gap: 10px; }
+.alerts__pair p { margin: 0; }
+.alerts__qr {
+  width: 180px;
+  height: 180px;
+  image-rendering: pixelated;   /* a resampled QR is a QR that will not scan */
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 8px;
+}
+
 /* phone mock — the message as it actually lands */
 .alerts__phone {
   border: 1px solid var(--line);

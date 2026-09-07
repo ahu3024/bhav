@@ -28,8 +28,8 @@ bhav/
   alert_engine.py  score → colour + ₹ impact + 3–5 day window + reason
   backtest.py      backtest_date(date), track_record()  (hits AND misses)
   warehouses.py    nearest WDRA godown + partial-sell heuristic
-  message.py       WhatsApp body (en/hi/mr) + Meta Cloud API send, with a
-                   template fallback for Meta's 24-hour window
+  message.py       WhatsApp body (en/hi/mr) — text and phone normalisation only
+  whatsapp.py      send/status/QR over the open-wa bridge (whatsapp/, Node)
   subscribers.py   registrations + delivery log (sqlite)
   api.py           FastAPI
 scripts/
@@ -54,7 +54,7 @@ scripts/
 cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env            # fill EE_PROJECT (+ WhatsApp for real sends)
+cp .env.example .env            # fill EE_PROJECT (+ WA_BRIDGE_TOKEN for real sends)
 earthengine authenticate       # one time, for NDVI
 ```
 
@@ -533,24 +533,29 @@ the **calibrated** number, not the raw score.
 कारण: महिनाभराची तेजी — आता ताणलेली; तसेच भाव वर्षाच्या सरासरीपेक्षा बराच वर
 ```
 
-**Channels.** WhatsApp only, via Meta's Cloud API. Free-form text first, with a
-pre-approved template as the fallback when Meta says the recipient's 24-hour
-window has closed — see the setup section below.
+**Channel.** WhatsApp, through [open-wa](https://open-wa.org) — a real WhatsApp
+account driven via WhatsApp Web by the Node bridge in `whatsapp/`. No 24-hour
+window, no approved template: see the setup section below for why that decided
+the design.
 
 **Registration.** `subscribers` table keyed on an E.164 phone (a bare 10-digit
 Indian mobile is normalised), holding crop, village PIN, language, usual sell
 window and channel. Re-registering updates and reactivates; `STOP` is a soft
-opt-out so history survives. Every send attempt lands in `message_log`,
-successes and failures both.
+opt-out so history survives, and `START` opts back in — both arrive over
+WhatsApp and are forwarded by the bridge. Every send attempt lands in
+`message_log`, successes and failures both.
 
 | Method | Path | Purpose |
 |---|---|---|
 | POST | `/subscribe` | register a phone; sends the current signal unless `send_welcome:false` |
-| POST | `/unsubscribe` | soft opt-out |
+| POST | `/unsubscribe` | soft opt-out (the bridge posts here on `STOP`) |
+| POST | `/resubscribe` | opt back in (the bridge posts here on `START`) |
 | GET  | `/subscribers` | counts by language and channel (never the phone list) |
-| GET  | `/message/status` | config + a read-only Graph credential check; sends nothing |
+| GET  | `/message/status` | bridge + session state; sends nothing |
+| GET  | `/message/qr` | the pairing QR as a PNG, while the session is unlinked |
+| GET  | `/message/check` | is a given number reachable on WhatsApp |
 | POST | `/message/preview/all` | the alert in all three languages |
-| POST | `/message/send` | one number; `channel`: `whatsapp` (text, template fallback), `template`, `text_only` |
+| POST | `/message/send` | one number |
 | POST | `/broadcast` | everyone — **`dry_run` defaults to true** |
 | GET  | `/message/log` | delivery attempts, with errors |
 
@@ -560,50 +565,49 @@ python -m scripts.broadcast --send             # actually deliver
 python -m scripts.broadcast --to +91... --lang mr   # one number
 ```
 
-### Meta WhatsApp Cloud API setup
+### open-wa setup
 
-Delivery goes straight to Meta's Graph API — no reseller, no vendor SDK, just
-`requests`. Twilio was removed: its trial tier rejected every free-form send with
-error 21654 (`ContentSid Required`) *and* blocked the Content API needed to
-create the template it was demanding, which left no path at all.
+Meta's Cloud API only permits a free-form message within **24 hours** of the
+recipient's last inbound message; outside that window nothing sends but a
+pre-approved template. A weekly alert to farmers who have never messaged us is
+precisely the case that rule forbids, which is why delivery does not go through
+it. (Twilio was tried first and was worse: its trial tier rejected every
+free-form send with `21654` *and* blocked the Content API needed to create the
+template it demanded.)
 
+open-wa drives a real WhatsApp account instead — no window, no template. The
+costs are real and worth stating: a phone must link the session once and stay
+linked, the account can be banned if it is used to spam, and this is an
+unofficial automation of WhatsApp Web rather than a supported API.
+
+The library is Node, so it runs as a separate process next to this API; the
+Python side (`bhav/whatsapp.py`) only speaks HTTP to it.
+
+```bash
+cd whatsapp && npm install
+cp .env.example .env      # WA_BRIDGE_TOKEN must match backend/.env
+npm start
 ```
-POST https://graph.facebook.com/{version}/{phone_number_id}/messages
-Authorization: Bearer {access_token}
-```
 
-Four values in `backend/.env`, all from Meta for Developers → your app →
-WhatsApp → API Setup:
+Two values in `backend/.env`:
 
 | Variable | Notes |
 |---|---|
-| `WHATSAPP_ACCESS_TOKEN` | API Setup issues a **24-hour** test token. For anything past a demo, create a System User token — it does not expire. |
-| `WHATSAPP_PHONE_NUMBER_ID` | The long numeric **ID**, not the phone number. Confusing these is the most common setup error. |
-| `WHATSAPP_TEMPLATE_NAME` | Optional but strongly advised — see the 24-hour rule below. |
-| `WHATSAPP_API_VERSION` | Defaults to `v21.0`. |
+| `WA_BRIDGE_URL` | Defaults to `http://localhost:3001`. |
+| `WA_BRIDGE_TOKEN` | Shared secret with the bridge. Set it — that process can message anyone from the linked account. |
 
-**The 24-hour rule is Meta policy, not a quirk of the integration.** A free-form
-`text` message is only permitted within 24 hours of the recipient's last inbound
-message. Outside that window only a pre-approved template sends. So
-`send_alert()` tries text first, and on a `131047` / re-engagement rejection
-falls back to the template automatically. That ordering matters: a farmer who
-just registered has messaged seconds ago and gets the clean free-form message,
-while a Monday-morning broadcast to everyone else still lands.
+**Linking.** The session starts unlinked and reports `session_status: "qr"`.
+Scan the pairing QR from the sending phone (WhatsApp → Linked devices → Link a
+device) — the backend serves it at `/message/qr`, the registration section of
+the site displays it and polls until it flips to linked, and `npm run link`
+prints it in the terminal for an SSH session. `GET /message/status` reports
+`whatsapp_ready`, which is the only field that means a message will actually go
+out; `explain_error()` maps a dead bridge, an unlinked session and a token
+mismatch to the specific thing to go and fix, and the broadcast script prints it
+as `FIX:`.
 
-Create the template in WhatsApp Manager → Message templates with a **single
-`{{1}}` body variable**. The whole rendered alert is passed as that variable, so
-the wording stays in `message.py` rather than being frozen inside Meta's
-approval flow — one template covers all three languages and every signal.
-
-While an app is unverified, Meta only delivers to numbers on the **test
-recipient allow-list** (API Setup → "To"). A missing entry surfaces as `131030`,
-and `explain_error()` maps that — along with expired tokens (`190`), an
-unregistered sender (`133010`) and a wrong phone-number ID (`100`) — to the
-specific thing to go and fix. The broadcast script prints it as `FIX:`.
-
-`GET /message/status` reports configuration *and* runs a read-only credential
-check against Graph, so a bad token is visible before a send rather than during
-one.
-
-**Not yet sent.** The Meta credentials are blank; everything above is verified
-by dry run and by the unconfigured-path behaviour.
+**Status.** Verified end to end up to the scan: the bridge boots, reaches
+WhatsApp Web, and serves a live pairing QR through the API; the Python client,
+the broadcast script and the registration UI all read that state correctly. The
+final step — scanning the QR with the sending phone — needs a physical handset,
+and no message has been delivered yet.

@@ -69,6 +69,19 @@ def unsubscribe(phone: str) -> dict:
     return get(phone) or {"phone": phone, "active": 0}
 
 
+def resubscribe(phone: str) -> dict:
+    """Opt back in — the counterpart to STOP, reached by replying START."""
+    phone = normalise_phone(phone)
+    init_db()
+    with cursor() as cur:
+        cur.execute(
+            "UPDATE subscribers SET active = 1, updated_at = ? WHERE phone = ?",
+            (_now(), phone),
+        )
+    return get(phone) or {"phone": phone, "active": 0,
+                          "reason": "not registered"}
+
+
 def get(phone: str) -> dict | None:
     init_db()
     phone = normalise_phone(phone)
