@@ -3,15 +3,15 @@ import SiteFooter from './components/SiteFooter'
 import Landing from './pages/Landing'
 import BacktestPage from './pages/BacktestPage'
 import TodayPage from './pages/TodayPage'
-import { useRoute, useScrollReset } from './router'
+import { useRoute, useRouteScroll } from './router'
 
 export default function App() {
   const route = useRoute()
-  useScrollReset(route)
+  useRouteScroll(route)
 
   return (
     <>
-      <SiteHeader route={route} />
+      <SiteHeader />
       {route === '/backtest' ? (
         <BacktestPage />
       ) : route === '/today' ? (

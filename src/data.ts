@@ -1,12 +1,12 @@
 // Landing-page content. Numbers are illustrative — real values
 // come from the backtest engine (see ../ROADMAP.md).
 
-// `#/...` entries are pages (see router.ts); bare `#...` are in-page anchors and
-// work from either page — the hash router treats anything without a leading
-// slash as the landing route.
+// Every entry here is an in-page anchor on the landing page, and works from any
+// page: the hash router reads a hash without a leading slash as the landing
+// route, then scrolls to the section (see router.ts). The two page links —
+// today's call, past dates — live in the hero, where there is room to say what
+// they are.
 export const nav = [
-  { label: "Today's call", href: '#/today' },
-  { label: 'Check a past date', href: '#/backtest' },
   { label: 'How it works', href: '#how' },
   { label: 'Why trust it', href: '#trust' },
   { label: 'What it cannot do', href: '#limits' },
@@ -26,13 +26,6 @@ export const signal = {
   confidence: 78,
   foot: 'An example — hover for today’s real call →',
 }
-
-export const sources = [
-  { label: 'Satellite', desc: 'Pictures of your fields from space, every few days' },
-  { label: 'Weather', desc: 'Rain, heat and damp on your own block' },
-  { label: 'Mandi', desc: 'What onion is actually fetching, and how much is arriving' },
-  { label: 'Past seasons', desc: 'Nine years of what happened after weeks like this one' },
-]
 
 export const steps = [
   {

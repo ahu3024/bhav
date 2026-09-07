@@ -1,9 +1,13 @@
 """Delivery layer — the WhatsApp message body itself.
 
-Three languages (English, Hindi, Marathi) and four lines, because the message is
-read on a cheap phone in a mandi, not on a dashboard. The order is fixed: what
-to do, by when, what it is worth, and why — a farmer who reads only the first
-line should still have the decision.
+Three languages (English, Hindi, Marathi) in four blocks, because the message is
+read on a cheap phone in a mandi, not on a dashboard: who it is from, what to
+do, what it is worth, and why. The order is fixed and the verdict sits on a line
+of its own — a farmer who reads nothing else should still have the decision.
+
+Formatting is WhatsApp's own, and *bold* only: the site mirrors this text in its
+preview bubble and renders the same markup, so anything else would show up there
+as stray punctuation.
 
 This module only *builds* text and normalises phone numbers. Actually sending it
 lives in `bhav.whatsapp`, which talks to the open-wa bridge.
@@ -12,6 +16,7 @@ lives in `bhav.whatsapp`, which talks to the open-wa bridge.
 from __future__ import annotations
 
 import re
+from datetime import date
 
 from .alert_engine import Alert
 
@@ -19,26 +24,72 @@ LANGS = ("en", "hi", "mr")
 
 _EMOJI = {"RED": "🔴", "AMBER": "🟡", "GREEN": "🟢"}
 
-# Four lines: action · window · money · reason.
+# Four blocks: who · verdict · numbers · why. The blank lines between them do
+# the work the punctuation used to — on a small screen the eye needs somewhere
+# to rest, and the verdict has to survive being read at a glance.
 _TEMPLATES = {
     "en": (
-        "{emoji} *Bhav* · {market} {crop} · {date}\n"
-        "*{label}* — window {w1} to {w2}\n"
-        "Impact: {impact} vs holding · {confidence}% confident\n"
-        "Why: {reason}"
+        "{emoji} *Bhav* · {crop} · {market}\n"
+        "{date}\n"
+        "\n"
+        "*{label}*\n"
+        "{advice}\n"
+        "\n"
+        "📅 Window: *{window}*\n"
+        "💰 Impact: *{impact}* vs holding\n"
+        "📊 Confidence: *{confidence}%*\n"
+        "\n"
+        "*Why*\n"
+        "{why}"
     ),
     "hi": (
-        "{emoji} *भाव* · {market} {crop} · {date}\n"
-        "*{label}* — अवधि {w1} से {w2}\n"
-        "असर: {impact} रोकने की तुलना में · {confidence}% भरोसा\n"
-        "कारण: {reason}"
+        "{emoji} *भाव* · {crop} · {market}\n"
+        "{date}\n"
+        "\n"
+        "*{label}*\n"
+        "{advice}\n"
+        "\n"
+        "📅 अवधि: *{window}*\n"
+        "💰 असर: *{impact}* रोकने की तुलना में\n"
+        "📊 भरोसा: *{confidence}%*\n"
+        "\n"
+        "*कारण*\n"
+        "{why}"
     ),
     "mr": (
-        "{emoji} *भाव* · {market} {crop} · {date}\n"
-        "*{label}* — कालावधी {w1} ते {w2}\n"
-        "परिणाम: {impact} थांबण्याच्या तुलनेत · {confidence}% खात्री\n"
-        "कारण: {reason}"
+        "{emoji} *भाव* · {crop} · {market}\n"
+        "{date}\n"
+        "\n"
+        "*{label}*\n"
+        "{advice}\n"
+        "\n"
+        "📅 कालावधी: *{window}*\n"
+        "💰 परिणाम: *{impact}* थांबण्याच्या तुलनेत\n"
+        "📊 खात्री: *{confidence}%*\n"
+        "\n"
+        "*कारण*\n"
+        "{why}"
     ),
+}
+
+# Month names rather than an ISO date. `2026-09-14` is a machine's way of
+# writing a day; nobody standing in a mandi parses it at a glance.
+_MONTHS = {
+    "en": ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+           "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"),
+    "hi": ("जनवरी", "फ़रवरी", "मार्च", "अप्रैल", "मई", "जून",
+           "जुलाई", "अगस्त", "सितंबर", "अक्टूबर", "नवंबर", "दिसंबर"),
+    "mr": ("जानेवारी", "फेब्रुवारी", "मार्च", "एप्रिल", "मे", "जून",
+           "जुलै", "ऑगस्ट", "सप्टेंबर", "ऑक्टोबर", "नोव्हेंबर", "डिसेंबर"),
+}
+
+# What the colour means as an instruction. The wording is kept identical to the
+# clauses alert_engine._reason appends, so _CONNECTIVES below already carries
+# the Hindi and Marathi for all three.
+_ADVICE = {
+    "RED": "sell into the current window",
+    "AMBER": "part-sell and watch closely",
+    "GREEN": "hold — conditions favour a better price",
 }
 
 _LABELS = {
@@ -223,9 +274,9 @@ _CONNECTIVES = {
 }
 
 _SUFFIX = {
-    "en": "\nReply STOP to unsubscribe.",
-    "hi": "\nबंद करने के लिए STOP भेजें।",
-    "mr": "\nबंद करण्यासाठी STOP पाठवा.",
+    "en": "\n\nReply STOP to unsubscribe.",
+    "hi": "\n\nबंद करने के लिए STOP भेजें।",
+    "mr": "\n\nबंद करण्यासाठी STOP पाठवा.",
 }
 
 
@@ -255,6 +306,73 @@ def _localise_reason(reason: str, lang: str) -> str:
     return out
 
 
+def _phrase(english: str, lang: str) -> str:
+    """One driver phrase, translated if we have it, capitalised for English."""
+    if lang == "en":
+        return english[:1].upper() + english[1:]
+    return _PHRASE_I18N.get(english, {}).get(lang, english)
+
+
+def _why(alert: Alert, lang: str) -> str:
+    """The drivers as bullets rather than a semicolon-spliced sentence.
+
+    Two of them, the same two the engine puts in `reason` — a third reads as
+    hedging, and the whole point of the block is that it can be skipped. Falls
+    back to the engine's own sentence when the model found no dominant driver,
+    which is the one case where there is nothing to bullet.
+    """
+    factors = getattr(alert.score, "factors", None) or []
+    phrases = [f.get("phrase") for f in factors[:2] if f.get("phrase")]
+    if not phrases:
+        return _localise_reason(alert.reason, lang)
+    return "\n".join(f"• {_phrase(p, lang)}" for p in phrases)
+
+
+def _advice(color: str, lang: str) -> str:
+    """The line under the verdict — what the colour actually means.
+
+    Where a clause is written as "verb — explanation" we keep only the
+    explanation: the verb is already the bold word directly above it, and in
+    Marathi it is the very same word ("थांबा / थांबा — …"), which reads like a
+    stutter. Clauses with no dash carry no such repetition and are used whole.
+    """
+    english = _ADVICE.get(color, "")
+    text = english if lang == "en" else _CONNECTIVES.get(
+        english, {}).get(lang, english)
+    _, dash, tail = text.partition(" — ")
+    if dash:
+        text = tail
+    return text[:1].upper() + text[1:] if lang == "en" else text
+
+
+def _day(iso: str) -> date | None:
+    try:
+        return date.fromisoformat(str(iso)[:10])
+    except ValueError:
+        return None
+
+
+def _fmt_date(iso: str, lang: str) -> str:
+    """`2026-09-07` -> `7 Sep 2026`."""
+    d = _day(iso)
+    return f"{d.day} {_MONTHS[lang][d.month - 1]} {d.year}" if d else str(iso)
+
+
+def _fmt_window(start: str, end: str, lang: str) -> str:
+    """`14–18 Sep`, or `28 Sep – 2 Oct` when the window straddles two months.
+
+    The month is what makes a date legible at a glance, so it is never dropped —
+    only its repetition is.
+    """
+    a, b = _day(start), _day(end)
+    if not a or not b:
+        return f"{start} – {end}"
+    months = _MONTHS[lang]
+    if (a.year, a.month) == (b.year, b.month):
+        return f"{a.day}–{b.day} {months[a.month - 1]}"
+    return f"{a.day} {months[a.month - 1]} – {b.day} {months[b.month - 1]}"
+
+
 def _money(impact: float, lang: str) -> str:
     sign = "+" if impact >= 0 else "−"
     unit = {"en": "/qtl", "hi": "/क्विंटल", "mr": "/क्विंटल"}[lang]
@@ -277,13 +395,15 @@ def build_message(alert: Alert, crop: str = "Onion", market: str = "Lasalgaon",
         emoji=_EMOJI[alert.color],
         market=market_name,
         crop=crop_name,
-        date=alert.date,
-        label=label,
-        w1=alert.window_start,
-        w2=alert.window_end,
+        date=_fmt_date(alert.date, lang),
+        # Upper-cases the English verdict and leaves Devanagari untouched, which
+        # is exactly what we want: one loud token per script.
+        label=label.upper(),
+        advice=_advice(alert.color, lang),
+        window=_fmt_window(alert.window_start, alert.window_end, lang),
         impact=_money(alert.expected_impact, lang),
         confidence=confidence,
-        reason=_localise_reason(alert.reason, lang),
+        why=_why(alert, lang),
     )
     return body + (_SUFFIX[lang] if include_optout else "")
 

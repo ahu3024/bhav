@@ -149,7 +149,16 @@ h1, h2, h3, p, dl, dd { margin: 0; }
   line-height: 1;
   color: var(--ink);
 }
-.nav-links { display: flex; align-items: center; gap: 32px; }
+/* The nav takes the whole middle of the header and spreads its links across it,
+   so the four things a reader can click run the full width rather than bunching
+   up beside the brand. */
+.nav-links {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-evenly;
+  gap: 32px;
+}
 .nav-links a {
   position: relative;
   font-family: var(--font-sans);
@@ -262,6 +271,7 @@ h1, h2, h3, p, dl, dd { margin: 0; }
 }
 .signal-flip__inner {
   position: relative;
+  display: grid;
   transition: transform 0.55s cubic-bezier(0.4, 0.1, 0.2, 1);
   transform-style: preserve-3d;
 }
@@ -271,21 +281,37 @@ h1, h2, h3, p, dl, dd { margin: 0; }
   transform: rotateY(180deg);
 }
 .signal-flip:focus-visible { border-radius: var(--r-md); box-shadow: 0 0 0 2px var(--green); }
-.signal-flip__face { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
-.signal-flip__face--back {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  transform: rotateY(180deg);
+/* Both faces share one grid cell, so the wrapper is as tall as the taller of
+   the two and neither can hang out of it. The live face runs longer than the
+   sample — its reason sentence wraps — and as an absolutely positioned overlay
+   it used to stick 33px out of the bottom. `display: flex` lets the shorter
+   face stretch to match, so flipping doesn't resize the card. */
+.signal-flip__face {
+  grid-area: 1 / 1;
+  display: flex;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
+.signal-flip__face--back { transform: rotateY(180deg); }
 
 @media (min-width: 1001px) {
+  /* The card rides up over the lower half of the frame, but stays in flow so
+     the hero grows to contain it. Positioned absolutely it contributed no
+     height, so it hung past the section edge and the next section — a reveal
+     wrapper, whose `will-change: transform` makes it paint like a positioned
+     element — covered the overhang.
+
+     -44% reproduces the old `top: 48%` exactly at every width: a margin
+     percentage resolves against the column's width, the frame is a fixed
+     520:440 box, and 0.52 of its height is 0.44 of its width. */
   .signal-flip {
-    position: absolute;
-    left: clamp(-40px, -2.4vw, -8px);
-    top: 48%;
+    margin-top: -44%;
+    margin-left: clamp(-40px, -2.4vw, -8px);
   }
+  /* The card now ends the media column, so the section's own padding is what
+     sets the space beneath it — the old value was measured from the frame,
+     which the card hung well below. */
+  .hero { padding-bottom: clamp(40px, 3.4vw, 56px); }
 }
 @media (max-width: 1000px) {
   .hero__inner { grid-template-columns: 1fr; gap: 40px; }
@@ -327,33 +353,6 @@ h1, h2, h3, p, dl, dd { margin: 0; }
 .sc__bar { height: 4px; border-radius: 999px; background: var(--line); overflow: hidden; }
 .sc__bar i { display: block; height: 100%; background: var(--green); border-radius: 999px; }
 .sc__foot { font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
-
-/* ---------- data-source strip ---------- */
-
-.source-strip {
-  background: var(--bg);
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-}
-.source-strip__inner {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 24px;
-  padding-block: 24px;
-}
-.source__label {
-  font-family: var(--font-mono);
-  font-weight: 700;
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--green);
-  margin-bottom: 6px;
-}
-.source__desc { font-family: var(--font-sans); font-size: 14px; color: var(--muted); }
-
-@media (max-width: 820px) { .source-strip__inner { grid-template-columns: repeat(2, 1fr); gap: 20px 24px; } }
-@media (max-width: 460px) { .source-strip__inner { grid-template-columns: 1fr; } }
 
 /* ---------- "second opinion" ---------- */
 
@@ -708,9 +707,6 @@ h1, h2, h3, p, dl, dd { margin: 0; }
 .bt-teaser .section__title { max-width: 18ch; }
 .bt-teaser .prose { margin-top: 20px; }
 
-/* active nav item */
-.nav-links a.is-active { color: var(--green); font-weight: 600; }
-
 /* backtest page: the panel is the whole page here, not a sidebar */
 .bt-panel--page { max-width: none; padding: clamp(24px, 3vw, 36px); }
 .bt-panel--page .bt-form input { flex: 0 1 240px; min-width: 190px; max-width: 240px; }
@@ -878,6 +874,8 @@ h1, h2, h3, p, dl, dd { margin: 0; }
   color: #111b21;
 }
 .alerts__line { display: block; word-break: break-word; }
+/* the blank lines between the message's blocks */
+.alerts__line--gap { height: 7px; }
 .alerts__time {
   position: absolute;
   right: 10px;
@@ -1353,8 +1351,7 @@ h1, h2, h3, p, dl, dd { margin: 0; }
   transform-origin: left;
   transition: transform 0.24s var(--ease);
 }
-.nav-links a:hover::after,
-.nav-links a.is-active::after { transform: scaleX(1); }
+.nav-links a:hover::after { transform: scaleX(1); }
 
 /* section cards on the landing page get the same soft corners */
 .fingerprint,
