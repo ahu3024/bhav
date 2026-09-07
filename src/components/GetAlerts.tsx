@@ -1,0 +1,214 @@
+import { useEffect, useState } from 'react'
+import {
+  getMessagePreviews,
+  getDeliveryStatus,
+  subscribe,
+  friendlyError,
+  LANG_NAMES,
+  type Lang,
+  type MessagePreview,
+  type DeliveryStatus,
+} from '../api'
+
+const SELL_WINDOWS = [
+  'Straight after harvest',
+  'Within 2 weeks',
+  'When I need cash',
+  'I store and wait',
+]
+
+export default function GetAlerts() {
+  const [lang, setLang] = useState<Lang>('mr')
+  const [phone, setPhone] = useState('')
+  const [name, setName] = useState('')
+  const [pin, setPin] = useState('')
+  const [sellWindow, setSellWindow] = useState(SELL_WINDOWS[0])
+  const [preview, setPreview] = useState<MessagePreview | null>(null)
+  const [delivery, setDelivery] = useState<DeliveryStatus | null>(null)
+  const [state, setState] = useState<'idle' | 'sending' | 'done' | 'error'>('idle')
+  const [msg, setMsg] = useState('')
+
+  useEffect(() => {
+    let alive = true
+    getMessagePreviews()
+      .then((d) => alive && setPreview(d))
+      .catch(() => {
+        /* backend down — the form still explains itself */
+      })
+    getDeliveryStatus()
+      .then((d) => alive && setDelivery(d))
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setState('sending')
+    setMsg('')
+    try {
+      const res = await subscribe({
+        phone,
+        name: name || undefined,
+        village_pin: pin || undefined,
+        lang,
+        sell_window: sellWindow,
+      })
+      const w = res.welcome
+      if (w?.sent) {
+        setMsg(`Registered. The current signal is on its way to ${res.subscriber.phone} over ${w.channel}.`)
+      } else {
+        setMsg(
+          `Registered ${res.subscriber.phone}. The message could not be delivered yet` +
+            (w?.reason ? ` — ${w.reason}` : '') +
+            '. You will get the next weekly signal once delivery is set up.',
+        )
+      }
+      setState('done')
+    } catch (err) {
+      setMsg(friendlyError(err))
+      setState('error')
+    }
+  }
+
+  const bubble = preview?.texts?.[lang] ?? ''
+
+  return (
+    <section className="section section--white alerts" id="get-alerts">
+      <div className="container inner">
+        <div className="alerts__copy">
+          <h2 className="section__title">Get the signal on WhatsApp</h2>
+          <p className="prose">
+            One message a week, in your language: what to do, by when, what it is
+            worth in ₹/quintal, and the one reason behind it. Four lines, because
+            it gets read standing in a mandi. Reply STOP any time.
+          </p>
+
+          <form className="alerts__form" onSubmit={onSubmit}>
+            <div className="alerts__langs" role="group" aria-label="Language">
+              {(Object.keys(LANG_NAMES) as Lang[]).map((l) => (
+                <button
+                  type="button"
+                  key={l}
+                  className={`alerts__lang${l === lang ? ' is-on' : ''}`}
+                  onClick={() => setLang(l)}
+                  aria-pressed={l === lang}
+                >
+                  {LANG_NAMES[l]}
+                </button>
+              ))}
+            </div>
+
+            <label className="alerts__label" htmlFor="ga-phone">
+              Phone number
+            </label>
+            <input
+              id="ga-phone"
+              className="alerts__input"
+              type="tel"
+              required
+              placeholder="98765 43210"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+            />
+
+            <div className="alerts__row">
+              <div>
+                <label className="alerts__label" htmlFor="ga-name">
+                  Name <span className="alerts__opt">optional</span>
+                </label>
+                <input
+                  id="ga-name"
+                  className="alerts__input"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="alerts__label" htmlFor="ga-pin">
+                  Village PIN <span className="alerts__opt">optional</span>
+                </label>
+                <input
+                  id="ga-pin"
+                  className="alerts__input"
+                  inputMode="numeric"
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <label className="alerts__label" htmlFor="ga-window">
+              When do you usually sell?
+            </label>
+            <select
+              id="ga-window"
+              className="alerts__input"
+              value={sellWindow}
+              onChange={(e) => setSellWindow(e.target.value)}
+            >
+              {SELL_WINDOWS.map((w) => (
+                <option key={w}>{w}</option>
+              ))}
+            </select>
+
+            <button className="btn btn--primary alerts__submit" disabled={state === 'sending'}>
+              {state === 'sending' ? 'Registering…' : 'Send me the signal'}
+            </button>
+
+            {msg && (
+              <p className={`bt-msg${state === 'error' ? ' bt-msg--err' : ''}`}>{msg}</p>
+            )}
+
+            {delivery && !delivery.configured && (
+              <p className="alerts__note">
+                WhatsApp delivery isn’t configured yet — set{' '}
+                <code>WHATSAPP_ACCESS_TOKEN</code> and{' '}
+                <code>WHATSAPP_PHONE_NUMBER_ID</code> in{' '}
+                <code>backend/.env</code>. You can still register; the next
+                weekly signal will go out once it is.
+              </p>
+            )}
+            {delivery?.configured && !delivery.template_ready && (
+              <p className="alerts__note">
+                Meta only allows a free-form message within 24 hours of your last
+                message to us. Registering right after messaging the number works;
+                otherwise an approved template is needed
+                (<code>WHATSAPP_TEMPLATE_NAME</code>).
+              </p>
+            )}
+          </form>
+        </div>
+
+        <div className="alerts__phone" aria-hidden="true">
+          <div className="alerts__screen">
+            <div className="alerts__chat-head">Bhav</div>
+            <div className="alerts__bubble">
+              {bubble
+                ? bubble.split('\n').map((line, i) => (
+                    <span key={i} className="alerts__line">
+                      {renderBold(line)}
+                    </span>
+                  ))
+                : <span className="alerts__line">Loading this week’s signal…</span>}
+              <span className="alerts__time">now</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/** WhatsApp renders *text* as bold; mirror that in the preview bubble. */
+function renderBold(line: string) {
+  const parts = line.split(/(\*[^*]+\*)/g)
+  return parts.map((p, i) =>
+    p.startsWith('*') && p.endsWith('*') && p.length > 2 ? (
+      <b key={i}>{p.slice(1, -1)}</b>
+    ) : (
+      <span key={i}>{p}</span>
+    ),
+  )
+}

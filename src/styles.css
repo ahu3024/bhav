@@ -555,3 +555,316 @@ h1, h2, h3, p, dl, dd { margin: 0; }
 }
 .site-footer__brand { font-family: var(--font-serif); font-size: 24px; color: var(--ink); }
 .site-footer__meta { font-family: var(--font-sans); font-size: 13px; color: var(--muted); }
+
+/* ---------- satellite NDVI ---------- */
+
+.ndvi .inner { display: flex; flex-direction: column; gap: clamp(28px, 4vw, 40px); }
+.ndvi__intro { display: flex; flex-direction: column; gap: 20px; }
+.ndvi__intro .section__title { max-width: 640px; }
+
+.ndvi__figure {
+  margin: 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 20px 20px 14px;
+}
+.ndvi__figure svg { width: 100%; height: auto; overflow: visible; }
+
+/* chart marks */
+.ndvi-c__grid { stroke: var(--line); stroke-width: 1; }
+.ndvi-c__area { fill: rgba(24, 63, 50, 0.10); }
+.ndvi-c__line { fill: none; stroke: var(--green); stroke-width: 2; stroke-linejoin: round; }
+.ndvi-c__threshold { stroke: var(--orange); stroke-width: 1; stroke-dasharray: 4 4; }
+.ndvi-c__mature { fill: rgba(201, 87, 44, 0.06); }
+.ndvi-c__blind { fill: rgba(116, 111, 103, 0.10); }
+.ndvi-c__obs { fill: var(--surface); stroke: var(--green); stroke-width: 1.4; }
+.ndvi-c__ylab,
+.ndvi-c__xlab,
+.ndvi-c__tlab {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  fill: var(--muted);
+}
+.ndvi-c__ylab { text-anchor: end; }
+.ndvi-c__tlab { fill: var(--orange); }
+
+.ndvi__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 22px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.ndvi__key {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.ndvi__key::before {
+  content: '';
+  width: 14px;
+  height: 10px;
+  border-radius: 2px;
+  flex: none;
+}
+.ndvi__key--line::before { height: 2px; background: var(--green); border-radius: 0; }
+.ndvi__key--obs::before {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--surface); border: 1.4px solid var(--green);
+}
+.ndvi__key--mature::before { background: rgba(201, 87, 44, 0.22); }
+.ndvi__key--blind::before { background: rgba(116, 111, 103, 0.22); }
+
+/* stat row — shared by the satellite and weather panels */
+.ndvi__stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+.ndvi__stat { background: var(--bg); padding: 18px 20px; }
+.section--white .ndvi__stat { background: var(--surface); }
+.ndvi__stat-k {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.ndvi__stat-v {
+  font-family: var(--font-serif);
+  font-size: 26px;
+  line-height: 1.1;
+  color: var(--green);
+  margin-bottom: 4px;
+}
+.ndvi__stat-note { font-family: var(--font-sans); font-size: 12px; color: var(--muted); }
+.ndvi__stat-note.is-warn { color: var(--orange); }
+
+/* ---------- page header (backtest page) ---------- */
+
+.page-head { padding-bottom: 0; }
+.page-head .inner { display: flex; flex-direction: column; align-items: flex-start; gap: 20px; }
+.page-title {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: clamp(30px, 4.4vw, 52px);
+  line-height: 1.1;
+  color: var(--ink);
+  max-width: 20ch;
+  margin: 0;
+}
+.page-head .prose { max-width: 62ch; }
+
+/* ---------- backtest page extras ---------- */
+
+.bt-presets { display: flex; flex-wrap: wrap; gap: 8px 20px; }
+.bt-preset-note { color: var(--muted); font-weight: 400; }
+.bt-sat {
+  border-top: 1px solid var(--line);
+  padding-top: 16px;
+  margin-top: 2px;
+}
+.bt-sat__head {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--green);
+  margin-bottom: 10px;
+}
+
+.bt-teaser .inner {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 32px;
+  flex-wrap: wrap;
+}
+.bt-teaser .section__title { max-width: 18ch; }
+.bt-teaser .prose { margin-top: 20px; }
+
+/* active nav item */
+.nav-links a.is-active { color: var(--green); font-weight: 600; }
+
+/* backtest page: the panel is the whole page here, not a sidebar */
+.bt-panel--page { max-width: none; padding: clamp(24px, 3vw, 36px); }
+.bt-panel--page .bt-form input { flex: 0 1 240px; min-width: 190px; max-width: 240px; }
+.bt-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: clamp(24px, 4vw, 56px);
+  align-items: start;
+}
+.bt-cols .bt-sat { border-top: 0; padding-top: 0; margin-top: 0; }
+@media (max-width: 820px) {
+  .bt-cols { grid-template-columns: 1fr; gap: 24px; }
+  .bt-cols .bt-sat { border-top: 1px solid var(--line); padding-top: 16px; }
+}
+
+/* ---------- weather overlay ---------- */
+
+.wx-c__rain { fill: rgba(24, 63, 50, 0.55); }
+.wx-c__hum { fill: none; stroke: var(--orange); stroke-width: 1.5; opacity: 0.85; }
+.wx-c__poor { fill: rgba(201, 87, 44, 0.09); }
+.wx-c__rlab { font-family: var(--font-mono); font-size: 10px; fill: var(--orange); }
+
+.ndvi__key--rain::before { background: rgba(24, 63, 50, 0.55); }
+.ndvi__key--hum::before { height: 2px; border-radius: 0; background: var(--orange); }
+.ndvi__key--poor::before { background: rgba(201, 87, 44, 0.22); }
+
+.weather__note {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--ink);
+  max-width: 62ch;
+  padding-left: 14px;
+  border-left: 2px solid var(--green);
+  margin: 0;
+}
+
+/* backtest page: satellite + weather context stack in the right column */
+.bt-context { display: flex; flex-direction: column; gap: 24px; }
+.bt-context .bt-sat + .bt-sat {
+  border-top: 1px solid var(--line);
+  padding-top: 20px;
+}
+.bt-sat__note {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--muted);
+  margin: 12px 0 0;
+}
+
+/* ---------- get alerts on WhatsApp ---------- */
+
+.alerts .inner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 340px);
+  gap: clamp(32px, 6vw, 72px);
+  align-items: start;
+}
+.alerts__copy { display: flex; flex-direction: column; gap: 20px; }
+.alerts__copy .section__title { max-width: 16ch; }
+
+.alerts__form { display: flex; flex-direction: column; gap: 10px; max-width: 460px; }
+.alerts__langs { display: flex; gap: 8px; margin-bottom: 6px; }
+.alerts__lang {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  padding: 8px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  color: var(--ink);
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.alerts__lang:hover { border-color: var(--green); }
+.alerts__lang.is-on { background: var(--green); border-color: var(--green); color: #fff; }
+
+.alerts__label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-top: 6px;
+}
+.alerts__opt { text-transform: none; letter-spacing: 0; font-style: italic; }
+.alerts__input {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  padding: 11px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink);
+  width: 100%;
+}
+.alerts__input:focus-visible { outline: 2px solid var(--green); outline-offset: 1px; }
+.alerts__row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.alerts__submit { margin-top: 14px; align-self: flex-start; }
+.alerts__note {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--muted);
+  border-left: 2px solid var(--orange);
+  padding-left: 12px;
+  margin: 4px 0 0;
+}
+.alerts__note code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--bg);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+/* phone mock — the message as it actually lands */
+.alerts__phone {
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  padding: 12px;
+  background: var(--bg);
+}
+.alerts__screen {
+  background: #ece5dd;              /* WhatsApp chat ground */
+  border-radius: 14px;
+  padding: 12px 10px 16px;
+  min-height: 260px;
+}
+.alerts__chat-head {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 12px;
+  color: #3b4a42;
+  padding: 0 4px 10px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.07);
+  margin-bottom: 12px;
+}
+.alerts__bubble {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  background: #fff;
+  border-radius: 8px 8px 8px 2px;
+  padding: 9px 11px 18px;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.12);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.45;
+  color: #111b21;
+}
+.alerts__line { display: block; word-break: break-word; }
+.alerts__time {
+  position: absolute;
+  right: 10px;
+  bottom: 5px;
+  font-size: 10px;
+  color: #8696a0;
+}
+
+@media (max-width: 900px) {
+  .alerts .inner { grid-template-columns: 1fr; }
+  .alerts__phone { max-width: 340px; }
+}
+@media (max-width: 460px) {
+  .alerts__row { grid-template-columns: 1fr; }
+}

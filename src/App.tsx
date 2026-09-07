@@ -1,24 +1,17 @@
 import SiteHeader from './components/SiteHeader'
-import Hero from './components/Hero'
-import SourceStrip from './components/SourceStrip'
-import SecondOpinion from './components/SecondOpinion'
-import HowItReads from './components/HowItReads'
-import Backtested from './components/Backtested'
-import Limits from './components/Limits'
 import SiteFooter from './components/SiteFooter'
+import Landing from './pages/Landing'
+import BacktestPage from './pages/BacktestPage'
+import { useRoute, useScrollReset } from './router'
 
 export default function App() {
+  const route = useRoute()
+  useScrollReset(route)
+
   return (
     <>
-      <SiteHeader />
-      <main>
-        <Hero />
-        <SourceStrip />
-        <SecondOpinion />
-        <HowItReads />
-        <Backtested />
-        <Limits />
-      </main>
+      <SiteHeader route={route} />
+      {route === '/backtest' ? <BacktestPage /> : <Landing />}
       <SiteFooter />
     </>
   )

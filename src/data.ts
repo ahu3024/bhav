@@ -1,9 +1,13 @@
 // Landing-page content. Numbers are illustrative — real values
 // come from the backtest engine (see ../ROADMAP.md).
 
+// `#/...` entries are pages (see router.ts); bare `#...` are in-page anchors and
+// work from either page — the hash router treats anything without a leading
+// slash as the landing route.
 export const nav = [
   { label: 'How it works', href: '#how' },
-  { label: 'Backtest', href: '#backtest' },
+  { label: 'Satellite', href: '#satellite' },
+  { label: 'Backtest', href: '#/backtest' },
   { label: 'Why trust it', href: '#trust' },
   { label: 'Limits', href: '#limits' },
 ]

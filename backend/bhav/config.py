@@ -15,6 +15,9 @@ RAW_DIR = DATA_DIR / "raw"
 MODELS_DIR = BACKEND_DIR / "models"
 DB_PATH = DATA_DIR / "bhav.db"
 MODEL_PATH = MODELS_DIR / "model.pkl"
+# Isotonic layer over the model's raw score (see calibration.py). Separate file
+# so recalibrating never means retraining.
+CALIBRATOR_PATH = MODELS_DIR / "calibrator.pkl"
 
 for _d in (RAW_DIR, MODELS_DIR):
     _d.mkdir(parents=True, exist_ok=True)
@@ -44,17 +47,50 @@ LON = 74.238
 # Rectangular AOI around the belt for NDVI sampling (deg).
 NDVI_AOI = {"min_lon": 74.00, "min_lat": 19.95, "max_lon": 74.55, "max_lat": 20.40}
 
+# --- Satellite NDVI (Sentinel-2 via Earth Engine) --------------------------- #
+
+# Sentinel-2 L2A (surface reflectance) coverage over India starts here. Earlier
+# dates simply have no NDVI; features fall back to the seasonal climatology.
+NDVI_START = "2017-04-01"
+# Roadmap: 10-day composites. A single pass is often cloud-wrecked; compositing
+# to 10 days is what makes the series usable, and the gap between composites is
+# carried explicitly as ndvi_obs_age_days rather than silently interpolated.
+NDVI_COMPOSITE_DAYS = 10
+NDVI_MAX_CLOUD_PCT = 60      # per-scene CLOUDY_PIXEL_PERCENTAGE cut
+NDVI_SCALE_M = 100           # reduceRegion scale — 100 m is plenty for a belt mean
+# Below this NDVI a clear pixel is read as "past maturity" — crop drying down
+# and close to harvest. Drives the "% area past maturity" feature.
+NDVI_MATURITY_THRESHOLD = 0.35
+# A composite built from less than this much clear sky is dropped as unreliable.
+NDVI_MIN_CLEAR_FRAC = 0.20
+# Beyond this, a stale composite is treated as "no current read" by the UI.
+NDVI_STALE_DAYS = 21
+
 # --- History window -------------------------------------------------------- #
 
 HISTORY_START = "2016-01-01"   # ~9 seasons back
 # HISTORY_END defaults to "today" at fetch time.
+
+# --- Mandi price cleaning (see prices.py) ---------------------------------- #
+
+# Mandis close for Sundays, holidays and bandhs. A gap up to this long is
+# interpolated; anything longer holds the last print and shows up in
+# days_since_trade instead of being smoothed away.
+PRICE_MAX_GAP_DAYS = 5
+# Trailing window and robust width for capping bad prints.
+PRICE_OUTLIER_WINDOW = 21
+PRICE_OUTLIER_MAD = 6.0
 
 # --- Modelling ------------------------------------------------------------- #
 
 # Predict: will the modal price fall by more than DROP_THRESHOLD_PCT within
 # HORIZON_DAYS, relative to today's price?
 HORIZON_DAYS = 10
-DROP_THRESHOLD_PCT = 0.10
+# Relocked at 16% after seeing the real Agmarknet series. The roadmap's
+# hour-one 8% was fixed before anyone had the data: on real Nashik onion it
+# fires on 55.6% of days, so "crash" meant nothing. At 16% the event is
+# genuinely unusual (~23% of days) while still being frequent enough to learn.
+DROP_THRESHOLD_PCT = 0.16
 
 # Alert-engine thresholds on predicted drop probability.
 SELL_PROB = 0.60     # >= this  -> RED  (sell now)

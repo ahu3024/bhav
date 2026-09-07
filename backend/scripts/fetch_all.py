@@ -9,7 +9,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from bhav.ingest import load, mandi, weather
+from bhav.ingest import cpi, load, mandi, weather
 
 
 def main() -> None:
@@ -27,8 +27,10 @@ def main() -> None:
         print("== weather (Open-Meteo archive) ==")
         weather.main()
     if not args.skip_mandi:
-        print("== mandi (Agmarknet) ==")
+        print("== mandi (Agmarknet 2.0 API) ==")
         mandi.main()
+        print("== CPI (World Bank, for deflation) ==")
+        cpi.main()
 
     print("== load -> sqlite ==")
     load.load_all()

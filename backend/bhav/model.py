@@ -49,14 +49,25 @@ def _build_estimator():
     try:
         from lightgbm import LGBMClassifier
 
+        # Sized for the data, not for defaults. ~2,840 training rows at a 23%
+        # base rate is ~650 positive examples; 31 leaves can carve that into
+        # slivers of a dozen, which is how the 33-feature model ended up ranking
+        # worse than a calendar. See scripts/prune_eval.py — this setting beat
+        # the stock one on test AP by +0.041 while keeping every feature.
+        # Pruning to 15 features was tried and made things worse: capacity, not
+        # feature count, was the binding constraint.
         return LGBMClassifier(
             n_estimators=400,
             learning_rate=0.03,
-            num_leaves=31,
+            num_leaves=8,           # was 31
+            max_depth=4,            # was unbounded
+            min_child_samples=60,   # was 30
             subsample=0.8,
+            # Without a bagging frequency LightGBM silently ignores `subsample`;
+            # the stock config had been asking for bagging and never getting it.
+            subsample_freq=1,
             colsample_bytree=0.8,
-            min_child_samples=30,
-            reg_lambda=1.0,
+            reg_lambda=5.0,         # was 1.0
             random_state=42,
             verbosity=-1,
         ), "lightgbm"

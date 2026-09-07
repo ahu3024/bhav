@@ -26,7 +26,12 @@ class Alert:
     window_start: str
     window_end: str
     expected_impact: float          # ₹/quintal vs today's price over the horizon
-    confidence: int                 # 0-100
+    confidence: int                 # 0-100, raw: distance from a coin flip
+    # Calibrated probability that *this call* is the right one, as a percentage.
+    # For a sell-side call that is P(crash); for WAIT it is P(no crash). Unlike
+    # `confidence` this is a real probability a person can act on, which is why
+    # the dashboard shows it instead.
+    calibrated_confidence: int
     reason: str
     score: Score
 
@@ -40,6 +45,7 @@ class Alert:
             "window_end": self.window_end,
             "expected_impact_per_quintal": round(self.expected_impact, 0),
             "confidence": self.confidence,
+            "calibrated_confidence": self.calibrated_confidence,
             "reason": self.reason,
             "score": self.score.as_dict(),
         }
@@ -104,6 +110,11 @@ def build_alert(date, persist: bool = True) -> Alert:
     impact = _expected_impact(score, color)
     w_start, w_end = _window(date, color)
     confidence = int(round(100 * abs(score.drop_probability - 0.5) * 2))
+    # GREEN argues the crash will *not* happen, so its confidence is the
+    # complement. Stated the other way round a "Wait" would read as 20%
+    # confident precisely when the model is most sure nothing is coming.
+    p_cal = score.calibrated_probability
+    calibrated_confidence = int(round(100 * (p_cal if color != "GREEN" else 1 - p_cal)))
     reason = _reason(score, color)
 
     alert = Alert(
@@ -115,6 +126,7 @@ def build_alert(date, persist: bool = True) -> Alert:
         window_end=w_end,
         expected_impact=impact,
         confidence=confidence,
+        calibrated_confidence=calibrated_confidence,
         reason=reason,
         score=score,
     )

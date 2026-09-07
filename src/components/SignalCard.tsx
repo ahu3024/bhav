@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { signal } from '../data'
-import { getAlertToday, sourceOf, formatDate, type Alert } from '../api'
+import { getAlertToday, sourceOf, formatDate, displayConfidence, type Alert } from '../api'
 
 type Face = {
   ref: string
@@ -10,12 +10,14 @@ type Face = {
   price: string
   factors: { text: string; src: string }[]
   confidence: number
+  /** Small label beside the confidence bar — what that number actually is. */
+  confLabel: string
   foot: string
 }
 
 // Front face — the illustrative sample from data.ts. Static, no network, so it
 // paints instantly on every refresh with zero buffer.
-const SAMPLE: Face = { ...signal }
+const SAMPLE: Face = { ...signal, confLabel: 'P(UP)' }
 
 const CACHE_KEY = 'bhav:alert:v1'
 
@@ -40,7 +42,8 @@ function toFace(a: Alert): Face {
       text: f.phrase,
       src: sourceOf(f.feature),
     })),
-    confidence: a.confidence,
+    confidence: displayConfidence(a),
+    confLabel: a.calibrated_confidence != null ? 'CALIBRATED' : 'RAW',
     foot: a.reason,
   }
 }
@@ -75,7 +78,7 @@ function CardFace({ face, tag }: { face: Face; tag: string }) {
         <div className="sc__conf">
           <div className="sc__conf-row">
             <b>{face.confidence}% confidence</b>
-            <span>P(UP)</span>
+            <span>{face.confLabel}</span>
           </div>
           <div className="sc__bar">
             <i style={{ width: `${face.confidence}%` }} />
@@ -124,6 +127,7 @@ export default function SignalCard() {
         price: '—',
         factors: [{ text: 'Live signal unavailable — start the API', src: ':8000' }],
         confidence: 0,
+        confLabel: 'P(UP)',
         foot: 'uvicorn bhav.api:app --reload',
       }
 

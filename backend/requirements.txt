@@ -14,5 +14,5 @@ uvicorn[standard]>=0.29
 # Satellite NDVI
 earthengine-api>=0.1.390
 
-# Optional: real WhatsApp send (roadmap §1.5). Safe to omit for the mock UI.
-twilio>=9.0
+# WhatsApp delivery goes straight to Meta's Graph API over `requests`
+# (already required above) — no vendor SDK.
