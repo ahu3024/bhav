@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 /**
  * Reveal-on-scroll, once per element.
@@ -42,4 +42,40 @@ export function useReveal(deps: unknown[] = []) {
     return () => io.disconnect()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps)
+}
+
+/**
+ * Count up to `target` rather than just displaying it — a figure that arrives
+ * mid-motion reads as live and is worth a second look; one that is simply
+ * printed on the page is easy to skim past. Re-runs whenever `target` changes,
+ * which is exactly once in practice (the moment real data replaces the 0 a
+ * page opens with), so this reads as "the number settling in" rather than a
+ * tic. Skips straight to the answer under reduced motion, same as useReveal.
+ */
+export function useCountUp(target: number, ms = 900): number {
+  const [n, setN] = useState(0)
+  const from = useRef(0)
+
+  useEffect(() => {
+    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    if (reduced || target === from.current) {
+      setN(target)
+      from.current = target
+      return
+    }
+    const start0 = from.current
+    const t0 = performance.now()
+    let raf = 0
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - t0) / ms)
+      const eased = 1 - Math.pow(1 - t, 3) // ease-out cubic — a settle, not a snap
+      setN(Math.round(start0 + (target - start0) * eased))
+      if (t < 1) raf = requestAnimationFrame(tick)
+      else from.current = target
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [target, ms])
+
+  return n
 }

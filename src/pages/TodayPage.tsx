@@ -1,16 +1,14 @@
 import { useEffect, useState } from 'react'
-import { useReveal } from '../useReveal'
+import { useReveal, useCountUp } from '../useReveal'
 import {
   getAlertToday,
   getNdvi,
   getWeather,
-  getBacktest,
   friendlyError,
   formatDate,
   type Alert,
   type NdviSeries,
   type WeatherSeries,
-  type Backtest,
 } from '../api'
 import {
   VERDICT,
@@ -27,21 +25,23 @@ import {
   sentence,
 } from '../plain'
 
-/** Same calendar date, one year back — the "what did this look like last year" anchor. */
-function lastYear(iso: string): string {
-  const [y, m, d] = iso.split('-').map(Number)
-  return `${y - 1}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
-}
-
 export default function TodayPage() {
   const [alert, setAlert] = useState<Alert | null>(null)
   const [ndvi, setNdvi] = useState<NdviSeries | null>(null)
   const [wx, setWx] = useState<WeatherSeries | null>(null)
-  const [ago, setAgo] = useState<Backtest | null>(null)
   const [err, setErr] = useState('')
 
   // Re-scan once the data lands, since most of the page does not exist until then.
-  useReveal([alert, ndvi, wx, ago])
+  useReveal([alert, ndvi, wx])
+
+  // Hooks run unconditionally on every render — including the loading and
+  // error ones, before `alert` exists — so the animated figures are computed
+  // here, fed 0 until there is a real number, rather than after the early
+  // returns below. The count then plays out the moment the real value lands.
+  const worth = alert ? worthLine(alert) : null
+  const confidence = alert ? alert.calibrated_confidence ?? alert.confidence : 0
+  const animatedWorth = useCountUp(worth?.value ?? 0)
+  const animatedConfidence = useCountUp(confidence)
 
   useEffect(() => {
     let alive = true
@@ -50,15 +50,13 @@ export default function TodayPage() {
         if (!alive) return
         setAlert(a)
         // Context, never the verdict — a missing panel must not blank the page.
-        const [sat, weather, back] = await Promise.all([
+        const [sat, weather] = await Promise.all([
           getNdvi(120).catch(() => null),
           getWeather(120).catch(() => null),
-          getBacktest(lastYear(a.date)).catch(() => null),
         ])
         if (!alive) return
         setNdvi(sat)
         setWx(weather)
-        setAgo(back)
       })
       .catch((e) => alive && setErr(friendlyError(e)))
     return () => {
@@ -79,7 +77,7 @@ export default function TodayPage() {
     )
   }
 
-  if (!alert) {
+  if (!alert || !worth) {
     return (
       <main>
         <section className="section page-head">
@@ -93,15 +91,16 @@ export default function TodayPage() {
   }
 
   const v = VERDICT[alert.color]
-  const worth = worthLine(alert)
   const sat = ndvi?.current
   const weather = wx?.current
-
+  const waiting = alert.color === 'GREEN'
 
   return (
     <main className="today">
       {/* ---- the answer, before anything else ---- */}
-      <section className={`today__verdict today__verdict--${alert.color.toLowerCase()}`}>
+      <section
+        className={`today__verdict today__verdict--${alert.color.toLowerCase()}${waiting ? ' today__verdict--waiting' : ''}`}
+      >
         <div className="container today__grid">
           <div className="today__main">
             <p className="today__where">Onion · Nashik · {formatDate(alert.date)}</p>
@@ -109,9 +108,23 @@ export default function TodayPage() {
             <p className="today__line">{v.line}</p>
 
             <div className="today__money">
-              <span className="today__amount">{worth.amount}</span>
+              <span className="today__amount">
+                {worth.prefix}
+                {rupees(animatedWorth)}
+                {worth.suffix}
+              </span>
               <span className="today__caption">{worth.caption}</span>
             </div>
+
+            {/* "Wait" is an ongoing state, not a one-off verdict — say so, so the
+                banner reads as a thing still in motion rather than a dead end. */}
+            {waiting && (
+              <p className="today__watch">
+                <span className="today__watch-dot" aria-hidden="true" />
+                Still watching, every day — your weekly WhatsApp alert will say
+                the moment this changes
+              </p>
+            )}
           </div>
 
           {/* the numbers a farmer checks second — kept out of the headline but
@@ -131,15 +144,9 @@ export default function TodayPage() {
             </div>
             <div className="glance__row">
               <span className="glance__k">How often this pattern held</span>
-              <span className="glance__v">
-                {alert.calibrated_confidence ?? alert.confidence} out of 100 weeks
-              </span>
+              <span className="glance__v">{animatedConfidence} out of 100 weeks</span>
               <span className="glance__bar" aria-hidden="true">
-                <i
-                  style={{
-                    width: `${alert.calibrated_confidence ?? alert.confidence}%`,
-                  }}
-                />
+                <i style={{ width: `${animatedConfidence}%` }} />
               </span>
             </div>
             {sat && (
@@ -272,9 +279,6 @@ export default function TodayPage() {
         </div>
       </section>
 
-      {/* ---- trust: same week last year ---- */}
-      {ago && <LastYear back={ago} />}
-
       <section className="section section--white">
         <div className="container inner today__next">
           <div>
@@ -323,64 +327,5 @@ function FactorCard({
       </dl>
       {note && <p className="fcard__note">{note}</p>}
     </article>
-  )
-}
-
-/**
- * The trust panel: the same week a year ago, what we would have said, and what
- * actually happened — including when the call was wrong. A tool that only shows
- * its wins is the one a farmer should not believe.
- */
-function LastYear({ back }: { back: Backtest }) {
-  const a = back.alert
-  const r = back.realized
-  const o = back.outcome
-  const right = o.call_was_right
-  const moved = r.max_drop_pct
-
-  return (
-    <section className="section lastyear">
-      <div className="container inner">
-        <h2 className="section__title">This same week, last year</h2>
-        <p className="prose">
-          The best way to judge a call is to watch an old one play out. Here is
-          the same week in {a.date.slice(0, 4)} — what we would have told you,
-          and what the mandi actually did next.
-        </p>
-
-        <div className="ly" data-reveal data-reveal-stagger>
-          <div className="ly__col" style={{ '--i': 0 } as React.CSSProperties}>
-            <span className="ly__k">We would have said</span>
-            <span className="ly__verdict">{VERDICT[a.color].word}</span>
-            <p className="ly__reason">{sentence(a.reason)}</p>
-          </div>
-
-          <div className="ly__col" style={{ '--i': 1 } as React.CSSProperties}>
-            <span className="ly__k">What actually happened</span>
-            <span className="ly__big">
-              {moved == null ? '—' : `${moved <= 0 ? 'Fell' : 'Rose'} ${percent(Math.abs(moved), 1)}`}
-            </span>
-            <p className="ly__reason">
-              The rate went from {rupees(r.price_now)} to{' '}
-              {r.price_min == null ? '—' : rupees(r.price_min)} per quintal over the
-              next {r.horizon_days} days.
-            </p>
-          </div>
-
-          <div
-            className={`ly__col ly__col--${right ? 'hit' : 'miss'}`}
-            style={{ '--i': 2 } as React.CSSProperties}
-          >
-            <span className="ly__k">Was the call right?</span>
-            <span className="ly__big">{right == null ? '—' : right ? 'Yes' : 'No'}</span>
-            <p className="ly__reason">
-              {right
-                ? `Following it was worth ${perQuintal(Math.abs(o.delta_per_quintal))} more than ${o.baseline_label}.`
-                : `It was wrong that week — following it left you ${perQuintal(Math.abs(o.delta_per_quintal))} worse off. We show the misses because you should know how often they happen.`}
-            </p>
-          </div>
-        </div>
-      </div>
-    </section>
   )
 }

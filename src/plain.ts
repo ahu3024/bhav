@@ -70,24 +70,34 @@ export function percent(fraction: number | null | undefined, digits = 0): string
  * What the call is worth, said as money in a pocket rather than a signed delta.
  * The sign means different things for different verdicts, so the wording has to
  * follow the verdict, not the number.
+ *
+ * `value` is kept separate from the surrounding words so the figure can be
+ * animated (counted up) without the sentence around it having to be rebuilt.
  */
-export function worthLine(alert: Alert): { amount: string; caption: string } {
-  const v = Math.round(alert.expected_impact_per_quintal)
-  const money = rupees(Math.abs(v))
+export function worthLine(
+  alert: Alert,
+): { prefix: string; value: number; suffix: string; caption: string } {
+  const value = Math.round(Math.abs(alert.expected_impact_per_quintal))
   if (alert.color === 'GREEN') {
     return {
-      amount: `about ${money} more per quintal`,
+      prefix: 'about ',
+      value,
+      suffix: ' more per quintal',
       caption: 'what waiting could be worth, compared with selling today',
     }
   }
   if (alert.color === 'RED') {
     return {
-      amount: `about ${money} per quintal`,
+      prefix: 'about ',
+      value,
+      suffix: ' per quintal',
       caption: 'what you could lose per quintal by holding on too long',
     }
   }
   return {
-    amount: `around ${money} per quintal`,
+    prefix: 'around ',
+    value,
+    suffix: ' per quintal',
     caption: 'how much the price could move either way',
   }
 }

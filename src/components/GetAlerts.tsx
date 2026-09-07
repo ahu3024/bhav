@@ -11,19 +11,11 @@ import {
   type DeliveryStatus,
 } from '../api'
 
-const SELL_WINDOWS = [
-  'Straight after harvest',
-  'Within 2 weeks',
-  'When I need cash',
-  'I store and wait',
-]
-
 export default function GetAlerts() {
   const [lang, setLang] = useState<Lang>('mr')
   const [phone, setPhone] = useState('')
   const [name, setName] = useState('')
   const [pin, setPin] = useState('')
-  const [sellWindow, setSellWindow] = useState(SELL_WINDOWS[0])
   const [preview, setPreview] = useState<MessagePreview | null>(null)
   const [delivery, setDelivery] = useState<DeliveryStatus | null>(null)
   const [state, setState] = useState<'idle' | 'sending' | 'done' | 'error'>('idle')
@@ -75,7 +67,6 @@ export default function GetAlerts() {
         name: name || undefined,
         village_pin: pin || undefined,
         lang,
-        sell_window: sellWindow,
       })
       const w = res.welcome
       if (w?.sent) {
@@ -161,20 +152,6 @@ export default function GetAlerts() {
                 />
               </div>
             </div>
-
-            <label className="alerts__label" htmlFor="ga-window">
-              When do you usually sell?
-            </label>
-            <select
-              id="ga-window"
-              className="alerts__input"
-              value={sellWindow}
-              onChange={(e) => setSellWindow(e.target.value)}
-            >
-              {SELL_WINDOWS.map((w) => (
-                <option key={w}>{w}</option>
-              ))}
-            </select>
 
             <button className="btn btn--primary alerts__submit" disabled={state === 'sending'}>
               {state === 'sending' ? 'Registering…' : 'Send me the signal'}
