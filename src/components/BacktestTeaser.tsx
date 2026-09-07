@@ -8,16 +8,15 @@ export default function BacktestTeaser() {
     <section className="section section--white bt-teaser" id="backtest">
       <div className="container inner">
         <div>
-          <h2 className="section__title">Don’t take our word for it. Rewind it.</h2>
+          <h2 className="section__title">Don’t take our word for it</h2>
           <p className="prose">
-            Pick any date since 2017 and see the alert that would have fired, the
-            price move that actually followed, and whether the call held up —
-            graded against the habit it argues against. The misses are in there
-            too, on the same page.
+            Pick any day since 2017. We will show you what we would have told
+            you that morning, what the rate actually did over the next ten days,
+            and whether the call was right. The wrong ones are in there too.
           </p>
         </div>
         <a className="btn btn--primary" href="#/backtest">
-          Open the backtest →
+          Check a past date →
         </a>
       </div>
     </section>

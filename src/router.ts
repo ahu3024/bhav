@@ -10,11 +10,13 @@ import { useEffect, useState } from 'react'
  * simply don't start with `#/`.
  */
 
-export type Route = '/' | '/backtest'
+export type Route = '/' | '/today' | '/backtest'
 
 function parse(hash: string): Route {
   const path = hash.replace(/^#/, '')
-  return path.startsWith('/backtest') ? '/backtest' : '/'
+  if (path.startsWith('/backtest')) return '/backtest'
+  if (path.startsWith('/today')) return '/today'
+  return '/'
 }
 
 export function useRoute(): Route {

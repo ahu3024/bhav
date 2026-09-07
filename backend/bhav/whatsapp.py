@@ -156,6 +156,15 @@ def explain_error(reason: str | None) -> str | None:
         return ("The WhatsApp session is not linked. Run `npm run link` in "
                 "whatsapp/ and scan the QR from the sending phone: WhatsApp → "
                 "Settings → Linked devices → Link a device.")
+    if "detached frame" in text or "execution context" in text or "target closed" in text:
+        return ("WhatsApp Web reloaded under the bridge, so that send hit a dead "
+                "browser page. The bridge relinks itself from the saved session "
+                "— nothing to scan — so just send it again in a few seconds.")
+    if "not a contact" in text:
+        return ("Unlicensed open-wa only messages numbers already saved as "
+                "contacts on the linked phone. Save the number as a contact "
+                "there, or buy a licence at https://get.openwa.dev — this is "
+                "an open-wa restriction, not a WhatsApp one.")
     if "401" in text or "bearer" in text:
         return "WA_BRIDGE_TOKEN in backend/.env does not match the bridge's."
     if "not a usable phone" in text:

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getNdvi, friendlyError, type NdviSeries } from '../api'
+import { stageWord } from '../plain'
 
 const W = 720
 const H = 240
@@ -14,7 +15,7 @@ function pct(v: number | null): string {
   return v == null ? '—' : `${Math.round(v * 100)}%`
 }
 
-/** NDVI/day is a tiny number; per-week reads better to a person. */
+/** Greenness change per day is a tiny number; per-week reads better. */
 function rate(v: number | null): string {
   if (v == null) return '—'
   const perWeek = v * 7
@@ -42,15 +43,15 @@ export default function NdviPanel() {
         <div className="ndvi__intro">
           <h2 className="section__title">What the satellite sees</h2>
           <p className="prose">
-            Sentinel-2 passes over the Nashik onion belt every few days at 10 m.
-            We turn each pass into one number for the belt — how green it is — and
-            one more that matters more: how much of it has already dried past
-            maturity and is heading for the mandi.
+            A satellite photographs the onion belt around Nashik every few days.
+            We turn each picture into one simple thing — how green the fields are
+            — and one that matters even more: how much of the crop has already
+            dried off and is about to head for the mandi.
           </p>
         </div>
 
         {err && <p className="bt-msg bt-msg--err">{err}</p>}
-        {!data && !err && <p className="bt-msg">Reading the latest pass…</p>}
+        {!data && !err && <p className="bt-msg">Looking at the latest satellite picture…</p>}
 
         {data && (
           <>
@@ -66,24 +67,24 @@ export default function NdviPanel() {
 function NdviStats({ data }: { data: NdviSeries }) {
   const c = data.current
   const stats = [
-    { k: 'Crop stage', v: c.stage, note: 'from the NDVI curve' },
-    { k: 'Past maturity', v: pct(c.pct_area_past_maturity), note: 'share of belt area' },
+    { k: 'The crop is', v: stageWord(c.stage), note: 'from the latest picture' },
+    { k: 'Fields past ripening', v: pct(c.pct_area_past_maturity), note: 'of the whole belt' },
     // With a stale read the curve is only the last composite held forward, so
     // its slope is zero by construction. Reporting that as "no change" would be
     // a measurement we never made.
     c.stale
-      ? { k: 'Greening rate', v: '—', note: 'needs a clear pass', warn: true }
-      : { k: 'Greening rate', v: rate(c.greening_rate_per_day), note: 'NDVI change' },
+      ? { k: 'Greening up or drying', v: '—', note: 'clouds are in the way', warn: true }
+      : { k: 'Greening up or drying', v: rate(c.greening_rate_per_day), note: 'change each week' },
     {
-      k: 'Since peak',
+      k: 'Since the crop was greenest',
       v: c.days_since_peak == null ? '—' : `${c.days_since_peak} days`,
-      note: 'greenness high point',
+      note: 'the turning point',
     },
     {
-      k: 'Last clear pass',
+      k: 'Last clear picture',
       v: c.obs_age_days == null ? '—'
         : c.obs_age_days === 0 ? 'today' : `${c.obs_age_days} days ago`,
-      note: c.stale ? 'stale — cloud cover' : 'fresh read',
+      note: c.stale ? 'clouds have hidden the fields' : 'a fresh look',
       warn: c.stale,
     },
   ]
@@ -157,7 +158,7 @@ function NdviChart({ data }: { data: NdviSeries }) {
   return (
     <figure className="ndvi__figure">
       <svg viewBox={`0 0 ${W} ${H}`} role="img"
-        aria-label="Sentinel-2 NDVI for the Nashik onion belt over the last year">
+        aria-label="How green the Nashik onion fields have been over the last year">
         {/* below the maturity line = crop has dried down */}
         <rect x={PAD.left} y={yThreshold} width={plotW}
           height={PAD.top + plotH - yThreshold} className="ndvi-c__mature" />
@@ -204,12 +205,12 @@ function NdviChart({ data }: { data: NdviSeries }) {
       </svg>
 
       <figcaption className="ndvi__legend">
-        <span className="ndvi__key ndvi__key--line">Smoothed NDVI the model reads</span>
+        <span className="ndvi__key ndvi__key--line">How green the fields are</span>
         <span className="ndvi__key ndvi__key--obs">
-          Actual {data.composite_days}-day composite
+          An actual satellite picture
         </span>
-        <span className="ndvi__key ndvi__key--mature">Past maturity</span>
-        <span className="ndvi__key ndvi__key--blind">Cloud — no clear pass</span>
+        <span className="ndvi__key ndvi__key--mature">Crop past ripening</span>
+        <span className="ndvi__key ndvi__key--blind">Cloudy — no clear view</span>
       </figcaption>
     </figure>
   )
