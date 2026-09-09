@@ -128,7 +128,11 @@ services:
     dockerContext: ./whatsapp
     plan: starter
     region: singapore
-    healthCheckPath: /health
+    # pserv (private service) has no public URL, so Render doesn't accept a
+    # healthCheckPath here — that field is web-service-only. The Docker
+    # HEALTHCHECK in whatsapp/Dockerfile still runs and gates deploys; the API
+    # separately treats GET /health as the liveness signal when it calls this
+    # service over the private network.
     disk:
       # The linked account is a Chrome profile on this disk. Without it, every
       # deploy asks someone to scan a pairing QR again — which, for a service
