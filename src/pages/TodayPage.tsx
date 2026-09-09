@@ -1,20 +1,10 @@
-import { useEffect, useState } from 'react'
 import { useReveal, useCountUp } from '../useReveal'
 import FactorCard from '../components/FactorCard'
 import VerdictBanner from '../components/VerdictBanner'
 import GlancePanel, { type GlanceRow } from '../components/GlancePanel'
 import DriverList from '../components/DriverList'
 import { Section, SectionHead } from '../components/Section'
-import {
-  getAlertToday,
-  getNdvi,
-  getWeather,
-  friendlyError,
-  formatDate,
-  type Alert,
-  type NdviSeries,
-  type WeatherSeries,
-} from '../api'
+import { useSnapshot, formatDate, type Alert } from '../api'
 import {
   stageWord,
   HARVEST_WINDOW,
@@ -29,10 +19,15 @@ import {
 } from '../plain'
 
 export default function TodayPage() {
-  const [alert, setAlert] = useState<Alert | null>(null)
-  const [ndvi, setNdvi] = useState<NdviSeries | null>(null)
-  const [wx, setWx] = useState<WeatherSeries | null>(null)
-  const [err, setErr] = useState('')
+  // One cached response for the whole page, shared with the landing page — so
+  // arriving here from there is instant and costs no request at all.
+  const { data: snap, error } = useSnapshot()
+  const alert: Alert | null = snap?.alert ?? null
+  // Context, never the verdict: a missing panel must not blank the page, which
+  // is why /snapshot reports a failed section as null beside the rest.
+  const ndvi = snap?.ndvi ?? null
+  const wx = snap?.weather ?? null
+  const err = error ?? ''
 
   // Re-scan once the data lands, since most of the page does not exist until then.
   useReveal([alert, ndvi, wx])
@@ -45,27 +40,6 @@ export default function TodayPage() {
   const confidence = alert ? alert.calibrated_confidence ?? alert.confidence : 0
   const animatedWorth = useCountUp(worth?.value ?? 0)
   const animatedConfidence = useCountUp(confidence)
-
-  useEffect(() => {
-    let alive = true
-    getAlertToday()
-      .then(async (a) => {
-        if (!alive) return
-        setAlert(a)
-        // Context, never the verdict — a missing panel must not blank the page.
-        const [sat, weather] = await Promise.all([
-          getNdvi(120).catch(() => null),
-          getWeather(120).catch(() => null),
-        ])
-        if (!alive) return
-        setNdvi(sat)
-        setWx(weather)
-      })
-      .catch((e) => alive && setErr(friendlyError(e)))
-    return () => {
-      alive = false
-    }
-  }, [])
 
   if (err || !alert || !worth) {
     return (

@@ -1,5 +1,4 @@
-import { useEffect, useState } from 'react'
-import { getNdvi, friendlyError, type NdviSeries } from '../api'
+import { useSnapshot, type NdviSeries } from '../api'
 import { stageWord } from '../plain'
 
 const W = 720
@@ -24,18 +23,12 @@ function rate(v: number | null): string {
 }
 
 export default function NdviPanel() {
-  const [data, setData] = useState<NdviSeries | null>(null)
-  const [err, setErr] = useState('')
-
-  useEffect(() => {
-    let alive = true
-    getNdvi(400)
-      .then((d) => alive && setData(d))
-      .catch((e) => alive && setErr(friendlyError(e)))
-    return () => {
-      alive = false
-    }
-  }, [])
+  // One snapshot behind the whole site: this panel, the weather panel below and
+  // the signal card in the hero all read the same cached response, so the
+  // landing page costs one request rather than three.
+  const { data: snap, error } = useSnapshot()
+  const data = snap?.ndvi ?? null
+  const err = error ?? snap?.errors?.ndvi ?? ''
 
   return (
     <section className="section ndvi" id="satellite">

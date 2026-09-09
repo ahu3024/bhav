@@ -12,13 +12,12 @@ import numpy as np
 import pandas as pd
 
 from .config import (
-    DB_PATH,
     DISTRICT,
     DROP_THRESHOLD_PCT,
     HORIZON_DAYS,
     NDVI_COMPOSITE_DAYS,
 )
-from .db import read_df
+from .db import data_version, read_df
 from .phenology import add_phenology
 from .prices import district_daily
 from .weather_overlay import FEATURE_COLS as WEATHER_OVERLAY_COLS, add_overlay
@@ -168,19 +167,21 @@ def _seasonal_norm(s: pd.Series) -> pd.Series:
 _CACHE: dict[tuple, pd.DataFrame] = {}
 
 
-def _db_stamp() -> tuple:
-    """Cache key that changes whenever the database is rewritten."""
-    try:
-        st = DB_PATH.stat()
-        return (st.st_mtime_ns, st.st_size)
-    except OSError:
-        return (0, 0)
+def _db_stamp() -> str:
+    """Cache key that changes whenever an *ingest* rewrites a source table.
+
+    Was the database file's mtime, which the API moved itself every time it
+    persisted an alert row while serving /alert/today -- so the cache was cold
+    on literally every request and each one paid a full rebuild. db.data_version
+    is bumped only by write_df, so serving no longer invalidates serving.
+    """
+    return data_version()
 
 
 def build_features(with_target: bool = True) -> pd.DataFrame:
     """Cached: the track-record walk scores hundreds of dates, and each one
-    would otherwise rebuild this whole matrix from sqlite. Keyed on the db's
-    mtime so a re-ingest or a re-seed invalidates it without a restart."""
+    would otherwise rebuild this whole matrix from sqlite. Keyed on the data
+    version so a re-ingest or a re-seed invalidates it without a restart."""
     key = (with_target, _db_stamp())
     hit = _CACHE.get(key)
     if hit is not None:

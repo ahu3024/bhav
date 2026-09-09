@@ -1,5 +1,4 @@
-import { useEffect, useState } from 'react'
-import { getWeather, friendlyError, type WeatherSeries } from '../api'
+import { useSnapshot, type WeatherSeries } from '../api'
 import { HARVEST_WINDOW, ROT_RISK } from '../plain'
 
 const W = 720
@@ -13,18 +12,10 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
 const RAIN_MAX = 60
 
 export default function WeatherPanel() {
-  const [data, setData] = useState<WeatherSeries | null>(null)
-  const [err, setErr] = useState('')
-
-  useEffect(() => {
-    let alive = true
-    getWeather(400)
-      .then((d) => alive && setData(d))
-      .catch((e) => alive && setErr(friendlyError(e)))
-    return () => {
-      alive = false
-    }
-  }, [])
+  // Shares the landing page's one snapshot — see NdviPanel.
+  const { data: snap, error } = useSnapshot()
+  const data = snap?.weather ?? null
+  const err = error ?? snap?.errors?.weather ?? ''
 
   return (
     <section className="section section--white ndvi weather" id="weather">

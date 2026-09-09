@@ -3,34 +3,76 @@
 Hackathon scope: one crop, one district — onion, Nashik (Maharashtra).
 Everything downstream (ingest, features, model, alert engine) reads from here
 so widening scope later is a config change, not a rewrite.
+
+Paths are environment-overridable so the same code runs from a checkout and
+from a container whose writable storage is a mounted disk. See DEPLOY.md.
 """
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = BACKEND_DIR / "data"
-RAW_DIR = DATA_DIR / "raw"
-MODELS_DIR = BACKEND_DIR / "models"
-DB_PATH = DATA_DIR / "bhav.db"
-MODEL_PATH = MODELS_DIR / "model.pkl"
-# Isotonic layer over the model's raw score (see calibration.py). Separate file
-# so recalibrating never means retraining.
-CALIBRATOR_PATH = MODELS_DIR / "calibrator.pkl"
 
-for _d in (RAW_DIR, MODELS_DIR):
-    _d.mkdir(parents=True, exist_ok=True)
-
-# Every entry point imports this module, so loading .env here means uvicorn, the
-# scripts and a bare REPL all see the same configuration. Without it the API
-# silently ran with no WhatsApp bridge token and no Earth Engine project.
+# Load .env *first*: everything below reads the environment, and on a bare
+# checkout the file is the only place the deployment settings exist. Without
+# this the API silently ran with no WhatsApp bridge token and no Earth Engine
+# project. On a real host the platform's own env wins — load_dotenv does not
+# overwrite variables that are already set.
 try:
     from dotenv import load_dotenv
 
     load_dotenv(BACKEND_DIR / ".env")
 except ImportError:  # python-dotenv is in requirements; don't hard-fail without it
     pass
+
+
+def _env_path(name: str, default: Path) -> Path:
+    value = os.getenv(name)
+    return Path(value).expanduser() if value else default
+
+
+def env_flag(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+# --- Paths ------------------------------------------------------------------
+#
+# Two roots, because a container's image and its writable storage are not the
+# same place:
+#
+#   SEED_*  ships inside the deploy — the pipeline output committed to the repo.
+#           Read-only in a container, and gone on the next deploy.
+#   DATA_DIR / MODELS_DIR  is where the process actually reads and writes. Point
+#           them at a mounted disk (BHAV_DATA_DIR=/var/data) and subscriptions
+#           survive a redeploy; leave them unset and everything stays in-tree,
+#           which is exactly the old behaviour.
+#
+# `bootstrap.py` copies SEED -> DATA_DIR on first boot when the two differ, so a
+# fresh disk starts with the shipped history rather than 503ing.
+SEED_DATA_DIR = BACKEND_DIR / "data"
+SEED_MODELS_DIR = BACKEND_DIR / "models"
+
+DATA_DIR = _env_path("BHAV_DATA_DIR", SEED_DATA_DIR)
+MODELS_DIR = _env_path("BHAV_MODELS_DIR", SEED_MODELS_DIR)
+RAW_DIR = DATA_DIR / "raw"
+DB_PATH = DATA_DIR / "bhav.db"
+MODEL_PATH = MODELS_DIR / "model.pkl"
+# Isotonic layer over the model's raw score (see calibration.py). Separate file
+# so recalibrating never means retraining.
+CALIBRATOR_PATH = MODELS_DIR / "calibrator.pkl"
+
+for _d in (DATA_DIR, RAW_DIR, MODELS_DIR):
+    try:
+        _d.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        # A read-only image layer. Only fatal if this is also where the process
+        # was told to write, and bootstrap.py reports that far more usefully.
+        pass
 
 # --- Target crop / district -------------------------------------------------
 
@@ -109,3 +151,34 @@ CAUTION_PROB = 0.35  # >= this  -> AMBER (caution)
 
 # Sell window length (days) the point prediction is spread into.
 WINDOW_DAYS = 5
+
+# --- Serving --------------------------------------------------------------- #
+
+# Who may call the API from a browser. A hosted frontend is on a different
+# origin to the API, so this has to be set there — "*" is the local default and
+# is refused for credentialed requests by every browser anyway.
+CORS_ORIGINS = [
+    o.strip() for o in os.getenv("BHAV_CORS_ORIGINS", "*").split(",") if o.strip()
+]
+
+# Shared secret for the endpoints that can message real people or read the
+# subscriber log. Unset = those endpoints are open, which is fine on localhost
+# and is exactly what you must not do on a public host; api.py says so at boot.
+ADMIN_TOKEN = os.getenv("BHAV_ADMIN_TOKEN", "")
+
+# How long a browser or CDN may reuse a signal/series response before
+# revalidating. Responses also carry an ETag keyed on the data generation, so a
+# revalidation after this expires is a 304 with no body unless the pipeline has
+# actually run. Zero disables client caching without touching the server cache.
+CACHE_MAX_AGE = int(os.getenv("BHAV_CACHE_MAX_AGE", "300"))
+CACHE_SWR = int(os.getenv("BHAV_CACHE_SWR", "86400"))
+
+# Writing an alert row on every read mutates the database, which used to
+# invalidate the feature cache on literally every request (see features.py).
+# The row is a nice-to-have audit trail; the rebuild is not. Off by default on
+# a host, on for scripted/offline use via BHAV_PERSIST_ALERTS=1.
+PERSIST_ALERTS = env_flag("BHAV_PERSIST_ALERTS", False)
+
+# Skip the startup warm-up (feature matrix + model into memory). Only useful if
+# you are debugging boot order.
+WARM_ON_BOOT = env_flag("BHAV_WARM_ON_BOOT", True)

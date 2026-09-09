@@ -31,9 +31,13 @@ bhav/
   message.py       WhatsApp body (en/hi/mr) — text and phone normalisation only
   whatsapp.py      send/status/QR over the open-wa bridge (whatsapp/, Node)
   subscribers.py   registrations + delivery log (sqlite)
+  cache.py         ETags + a bounded response memo, keyed on the data version
+  bootstrap.py     seed a fresh host's disk from the shipped data/seed.db
   api.py           FastAPI
 scripts/
   fetch_all.py     pull every source → sqlite
+  make_seed.py     data/bhav.db → data/seed.db, the snapshot the deploy ships
+                   (refuses to include subscribers or the message log)
   seed_demo.py     synthetic ~9-season history, offline safety net
   build.py         features → train → models/model.pkl
   check_leakage.py point-in-time audit — proves no feature reads the future
@@ -53,7 +57,7 @@ scripts/
 ```bash
 cd backend
 python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements-ingest.txt   # requirements.txt alone = serve only
 cp .env.example .env            # fill EE_PROJECT (+ WA_BRIDGE_TOKEN for real sends)
 earthengine authenticate       # one time, for NDVI
 ```
@@ -75,23 +79,73 @@ uvicorn bhav.api:app --reload --port 8000
 
 ## Endpoints
 
+Every GET below carries an `ETag` keyed on the data version and a
+`Cache-Control` with `stale-while-revalidate`, so a client that already has the
+answer gets a 304 with no body until an ingest has actually run. See
+`bhav/cache.py`.
+
 | Method | Path | Purpose |
 |---|---|---|
+| GET  | `/snapshot?days=400` | **the whole page in one request** — alert + NDVI + weather (+ prices with `include_prices=1`). One thing to wait for, one ETag to revalidate |
 | GET  | `/alert/today` | live signal for the latest data date |
 | GET  | `/alert?date=YYYY-MM-DD` | signal as of any date |
 | GET  | `/backtest?date=YYYY-MM-DD` | signal on that date **+ what actually happened** vs selling blind |
 | GET  | `/track-record?step_days=7` | weekly walk of history, hit/miss tally by colour |
 | GET  | `/warehouse/nearest` | nearest WDRA godowns |
 | POST | `/partial-sell` | `{cash_need_rupees, total_quintals}` → sell/store split |
-| POST | `/subscribe` | register a phone (see WhatsApp delivery below) |
+| POST | `/subscribe` | register a phone (rate-limited per IP; see WhatsApp delivery below) |
+| GET  | `/message/preview/all` | the alert in all three languages — what the registration form shows |
 | POST | `/message/preview` | localized WhatsApp text (`lang: en\|hi\|mr`) |
-| POST | `/broadcast` | send to all subscribers — `dry_run` defaults to true |
+| GET  | `/delivery/status` | can an alert be delivered right now — the public, redacted half |
 | GET  | `/ndvi?days=400` | NDVI series — the real 10-day composites **and** the smoothed daily curve the model reads |
 | GET  | `/ndvi/asof?date=` | the satellite's read on one date: stage, greening rate, days since peak, % past maturity, how stale |
 | GET  | `/weather?days=400` | daily rain + humidity, with the harvest-window and rot-risk scores |
 | GET  | `/weather/asof?date=` | the overlay on one date: harvest window, storage risk, dry days, wet spell, humidity + a one-line read |
 | GET  | `/prices?days=365` | cleaned district price series (nominal + deflated, arrivals, markets reporting) with a data-quality read-out |
 | GET  | `/model/info` | model kind, features, CV metrics |
+| GET  | `/health` | liveness. No database, no model — a slow query cannot fail a healthy deploy |
+| GET  | `/readyz` | readiness, with the reason when the answer is no |
+| GET  | `/meta` | data version, latest date — cheap enough to poll |
+
+**Admin** — everything that can message a real person or say who they are.
+Guarded by `BHAV_ADMIN_TOKEN` (`Authorization: Bearer …`, or `?token=` for the
+QR, which is opened in a browser). Unset leaves them open, which is right on
+localhost and wrong anywhere else; the API warns at boot and `/readyz` reports
+`admin_token_set`.
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/broadcast` | send to all subscribers — `dry_run` defaults to true |
+| POST | `/message/send` | one message to one number |
+| GET  | `/message/qr` | the open-wa pairing QR. **Scanning it links a WhatsApp account to this deployment** |
+| GET  | `/message/status` | full bridge state, including the linked number |
+| GET  | `/message/check` | is a number on WhatsApp? Sends nothing |
+| GET  | `/message/log` | recent send attempts |
+| GET  | `/subscribers` | counts only — the phone list is not something this API hands out |
+| POST | `/admin/cache/clear` | drop the response memo |
+
+## Deploying
+
+See [../DEPLOY.md](../DEPLOY.md). The short version:
+
+```bash
+python -m scripts.make_seed     # data/bhav.db -> data/seed.db, the shipped copy
+```
+
+`data/seed.db` is committed and goes into the image, so a fresh container serves
+a real signal on its first request. `data/bhav.db` is **not** committed — it
+holds `subscribers` and `message_log`, which are real phone numbers and the text
+of every message sent to them. `make_seed` copies across only the tables the
+model reads and refuses to write a snapshot that picked up anything else
+(`--check` verifies an existing one).
+
+`BHAV_DATA_DIR` points the live database at a mounted disk; `bhav/bootstrap.py`
+seeds it on first boot and, with `BHAV_SEED_MODE=refresh`, lets a later deploy
+carrying newer data replace the pipeline tables while keeping every subscriber.
+
+`requirements.txt` is what the API needs. `requirements-ingest.txt` adds Earth
+Engine and lxml for the pipeline — the API never imports them, so a missing GEE
+credential cannot take the signal down.
 
 ## Satellite NDVI
 

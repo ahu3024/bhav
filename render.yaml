@@ -1,0 +1,157 @@
+# Render blueprint for Bhav — three services.
+#
+#   bhav-web        the site (static files, free, on Render's CDN)
+#   bhav-api        the signal (FastAPI in a container; free tier is enough)
+#   bhav-whatsapp   delivery (open-wa + Chromium; needs a paid, always-on
+#                   instance and a disk — see the note on that service)
+#
+# Deploy: push this repo to GitHub, then Render -> New -> Blueprint and point it
+# here. Three values have to be filled in by hand afterwards; each is marked
+# `sync: false` and explained below. Full walkthrough in DEPLOY.md.
+
+services:
+  # --- the site ---------------------------------------------------------------
+  - type: web
+    name: bhav-web
+    runtime: static
+    buildCommand: npm ci && npm run build
+    staticPublishPath: ./dist
+    # Vite inlines VITE_API_URL at *build* time, so changing it needs a rebuild,
+    # not just a restart. Set it to the API's full URL including the scheme:
+    #   https://bhav-api.onrender.com
+    # (A blueprint cannot compose that string from the service reference, which
+    # yields a bare hostname — hence sync: false.)
+    envVars:
+      - key: VITE_API_URL
+        sync: false
+    headers:
+      # The build fingerprints every asset filename, so they can be cached hard;
+      # index.html must not be, or a deploy is invisible until someone clears
+      # their browser.
+      - path: /assets/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable
+      - path: /index.html
+        name: Cache-Control
+        value: no-cache
+    routes:
+      # The app uses hash routes (#/today), so this is only a safety net for
+      # anyone who hand-types a path.
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
+  # --- the signal -------------------------------------------------------------
+  - type: web
+    name: bhav-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    # `starter`, not `free`, only because Render sells disks on paid instances
+    # alone. To run this free: delete the `disk:` block below and leave the rest
+    # as it is. Everything still works — the shipped snapshot is in the image —
+    # but the container filesystem is wiped on each deploy, so registrations do
+    # not survive one. Free instances also sleep after 15 idle minutes and take
+    # ~50s to wake; the site stays readable through that, because the browser
+    # renders its cached copy while the request is in flight.
+    plan: starter
+    region: singapore          # closest to Nashik; move it if your users aren't
+    # /health touches neither the database nor the model, so a slow first query
+    # cannot fail a healthy deploy. /readyz is the one that reports whether
+    # there is anything to serve.
+    healthCheckPath: /health
+    disk:
+      # Without this the API still works — it just forgets every registration on
+      # each deploy, because the shipped snapshot is read-only and the container
+      # filesystem is thrown away. 1 GB is far more than a SQLite file of a few
+      # hundred KB needs; it is the smallest size Render sells.
+      name: bhav-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: BHAV_DATA_DIR
+        value: /var/data
+      - key: BHAV_MODELS_DIR
+        value: /var/data/models
+      # `refresh` = a deploy carrying a newer data/seed.db replaces the pipeline
+      # tables on the disk and keeps every subscriber. That is the whole refresh
+      # story for a host: run the pipeline locally, `python -m scripts.make_seed`,
+      # commit, push. Set it to `missing` if you would rather the disk always win.
+      - key: BHAV_SEED_MODE
+        value: refresh
+      # Guards /broadcast, /message/send and the subscriber endpoints. Generated
+      # once and visible in the Render dashboard — you need it to link the
+      # sending phone (see DEPLOY.md).
+      - key: BHAV_ADMIN_TOKEN
+        generateValue: true
+      # Must match the bridge's. Wired straight across so there is nothing to
+      # keep in sync by hand.
+      - key: WA_BRIDGE_TOKEN
+        fromService:
+          name: bhav-whatsapp
+          type: pserv
+          envVarKey: WA_BRIDGE_TOKEN
+      # Comes through as `host:port` with no scheme — bhav/whatsapp.py adds
+      # http:// when one is missing, so this needs no massaging here.
+      - key: WA_BRIDGE_URL
+        fromService:
+          name: bhav-whatsapp
+          type: pserv
+          property: hostport
+      # Lock this to your site's origin once you know it —
+      # https://bhav-web.onrender.com — rather than leaving the default "*".
+      - key: BHAV_CORS_ORIGINS
+        sync: false
+
+  # --- delivery ---------------------------------------------------------------
+  #
+  # A private service: it is reachable from bhav-api and from nowhere else. That
+  # matters more here than anywhere else in this file, because /qr hands out a
+  # pairing code — anyone who scans it links *their* WhatsApp account to this
+  # deployment — and /send messages arbitrary numbers from the linked account.
+  # The API re-exposes both behind BHAV_ADMIN_TOKEN, which is how you link it.
+  #
+  # This one cannot be free, for two reasons that are not about money:
+  #   - A free instance sleeps after 15 idle minutes. Waking it rebuilds the
+  #     browser, and a WhatsApp Web session that keeps being torn down and
+  #     re-established is how an account gets flagged.
+  #   - Chromium plus Node does not fit in 512 MB reliably. `starter` is the
+  #     floor; if you see the container restarting under load, that is the OOM
+  #     killer and the fix is `standard`.
+  # Not ready to pay for it? Delete this service and the two `fromService`
+  # entries above, and run the bridge on any always-on machine you have —
+  # DEPLOY.md has that variant.
+  - type: pserv
+    name: bhav-whatsapp
+    runtime: docker
+    dockerfilePath: ./whatsapp/Dockerfile
+    dockerContext: ./whatsapp
+    plan: starter
+    region: singapore
+    healthCheckPath: /health
+    disk:
+      # The linked account is a Chrome profile on this disk. Without it, every
+      # deploy asks someone to scan a pairing QR again — which, for a service
+      # whose entire job is to be linked, is the difference between working and
+      # not. Chrome's profile is a few hundred MB once WhatsApp Web caches.
+      name: bhav-wa-session
+      mountPath: /var/data
+      sizeGB: 2
+    envVars:
+      - key: WA_SESSION_DIR
+        value: /var/data/wa-sessions
+      - key: WA_CHROME_PATH
+        value: /usr/bin/chromium
+      - key: WA_BRIDGE_TOKEN
+        generateValue: true
+      # Refuse to boot unauthenticated. A bridge with no token looks healthy and
+      # the first symptom of the mistake is the account being banned.
+      - key: WA_REQUIRE_TOKEN
+        value: "1"
+      # Where the bridge posts STOP/START opt-outs. Scheme-less, like the one
+      # above; server.js normalises it.
+      - key: BHAV_API_URL
+        fromService:
+          name: bhav-api
+          type: web
+          property: hostport

@@ -1,7 +1,15 @@
 // Thin client for the Bhav backend (see ../backend). Set VITE_API_URL in
-// .env.local to point somewhere other than a locally-running API.
+// .env.local (or in the host's environment at build time) to point somewhere
+// other than a locally-running API.
+//
+// Reads go through ./cache — the answers change once a day at most, so a page
+// renders from the last one immediately and revalidates behind it. See that
+// file for why, and the backend's cache.py for the ETags that make a
+// revalidation free.
 
-const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+import { cachedFetch, useCached, type Cached, type CachedOptions } from './cache'
+
+const BASE = (import.meta.env.VITE_API_URL ?? 'http://localhost:8000').replace(/\/$/, '')
 
 export type Factor = {
   feature: string
@@ -187,11 +195,57 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return res.json() as Promise<T>
 }
 
+/** A GET, so it costs no CORS preflight and caches like everything else. */
 export const getMessagePreviews = () =>
-  post<MessagePreview>('/message/preview/all', {})
-export const getDeliveryStatus = () => get<DeliveryStatus>('/message/status')
-/** The open-wa pairing QR. 409s once the session is linked. */
-export const whatsappQrUrl = () => `${BASE}/message/qr`
+  cachedFetch<MessagePreview>('/message/preview/all', BASE)
+
+/**
+ * Whether an alert can actually be delivered right now — the public half of the
+ * bridge's state.
+ *
+ * The full picture (which number is linked, where the bridge lives, the send
+ * counters) is admin-only, and so is the pairing QR: scanning that QR links the
+ * scanner's WhatsApp account to this deployment, so it is not something a
+ * visitor's browser gets handed.
+ */
+export type DeliveryReady = {
+  ready: boolean
+  reachable: boolean
+  /** starting | qr | connected | reconnecting | failed | unreachable */
+  state: string
+  awaiting_pairing: boolean
+}
+
+export const getDeliveryReady = () => get<DeliveryReady>('/delivery/status')
+
+/** Full bridge status. Needs the admin token. */
+export const getDeliveryStatus = (token: string) =>
+  get<DeliveryStatus>(`/message/status?token=${encodeURIComponent(token)}`)
+
+/**
+ * The open-wa pairing QR. 409s once the session is linked, 401s without the
+ * admin token — which is the point: this URL links a WhatsApp account.
+ */
+export const whatsappQrUrl = (token: string) =>
+  `${BASE}/message/qr?token=${encodeURIComponent(token)}`
+
+/**
+ * The admin token, if this browser was sent here with one (`?admin=…` or
+ * `#/…?admin=…`). Operators linking the sending phone use it; nobody else has
+ * a reason to, and nobody else sees the pairing panel.
+ */
+export function adminToken(): string {
+  try {
+    const fromQuery = new URLSearchParams(window.location.search).get('admin')
+    if (fromQuery) return fromQuery
+    const hash = window.location.hash
+    const q = hash.indexOf('?')
+    if (q >= 0) return new URLSearchParams(hash.slice(q + 1)).get('admin') ?? ''
+  } catch {
+    /* no window, or a hash that isn't a query — no token */
+  }
+  return ''
+}
 export const subscribe = (body: {
   phone: string
   name?: string
@@ -243,14 +297,93 @@ async function get<T>(path: string): Promise<T> {
   return res.json() as Promise<T>
 }
 
-export const getAlertToday = () => get<Alert>('/alert/today')
-export const getAlert = (date: string) => get<Alert>(`/alert?date=${date}`)
-export const getBacktest = (date: string) => get<Backtest>(`/backtest?date=${date}`)
-export const getNdvi = (days = 400) => get<NdviSeries>(`/ndvi?days=${days}`)
-export const getNdviAsOf = (date: string) => get<NdviRead>(`/ndvi/asof?date=${date}`)
-export const getWeather = (days = 400) => get<WeatherSeries>(`/weather?days=${days}`)
+// --- the one-request page load ----------------------------------------------
+
+/**
+ * Everything a page needs, in one response.
+ *
+ * The site used to open three connections for one screen — the signal, the
+ * satellite series and the weather series — each waking the same feature matrix
+ * on the backend and each paying its own round trip. `/snapshot` answers all of
+ * them together, so a page has one thing to wait for and one entry to cache.
+ *
+ * Sections are individually nullable: a satellite read that could not be built
+ * is not a reason to hide the price, so the backend reports the failure in
+ * `errors` and returns everything else.
+ */
+export type Snapshot = {
+  district: string
+  crop: string
+  latest_date: string
+  data_version: string
+  alert: Alert | null
+  ndvi: NdviSeries | null
+  weather: WeatherSeries | null
+  prices?: PriceSeries | null
+  model: { kind: string; horizon_days: number; drop_threshold_pct: number } | null
+  errors: Record<string, string>
+}
+
+export type PriceDay = {
+  date: string
+  price: number | null
+  price_real: number | null
+  price_min: number | null
+  price_max: number | null
+  arrivals_tonnes: number | null
+  markets: number
+  traded: boolean
+}
+
+export type PriceSeries = {
+  district: string
+  crop: string
+  source: string
+  quality: Record<string, unknown>
+  daily: PriceDay[]
+}
+
+/** How much history the charts draw. One value site-wide, so every page shares
+ *  the same cached snapshot rather than each asking for its own window. */
+export const SNAPSHOT_DAYS = 400
+
+/**
+ * The whole site's data, cached and self-refreshing.
+ *
+ * Safe to call from as many components as you like: they share one request and
+ * one stored copy, and all of them update together when a new one lands.
+ */
+export function useSnapshot(options: CachedOptions = {}): Cached<Snapshot> {
+  return useCached<Snapshot>(`/snapshot?days=${SNAPSHOT_DAYS}`, BASE, {
+    describeError: friendlyError,
+    ...options,
+  })
+}
+
+/** One past date's backtest, cached per date — the picker walks back and forth
+ *  over the same handful of dates, and each is a fixed historical fact. */
+export function useCachedPath<T>(path: string, options: CachedOptions = {}): Cached<T> {
+  return useCached<T>(path, BASE, { describeError: friendlyError, ...options })
+}
+
+// A past date's call, and what the satellite and the weather saw that morning,
+// are historical facts — they cannot change unless the pipeline is re-run. So
+// they are cached for an hour: stepping back and forth across the preset dates
+// on the backtest page costs one request per date, ever.
+const HISTORICAL_TTL = 60 * 60 * 1000
+
+export const getAlertToday = () => cachedFetch<Alert>('/alert/today', BASE)
+export const getAlert = (date: string) =>
+  cachedFetch<Alert>(`/alert?date=${date}`, BASE, HISTORICAL_TTL)
+export const getBacktest = (date: string) =>
+  cachedFetch<Backtest>(`/backtest?date=${date}`, BASE, HISTORICAL_TTL)
+export const getNdvi = (days = 400) => cachedFetch<NdviSeries>(`/ndvi?days=${days}`, BASE)
+export const getNdviAsOf = (date: string) =>
+  cachedFetch<NdviRead>(`/ndvi/asof?date=${date}`, BASE, HISTORICAL_TTL)
+export const getWeather = (days = 400) =>
+  cachedFetch<WeatherSeries>(`/weather?days=${days}`, BASE)
 export const getWeatherAsOf = (date: string) =>
-  get<WeatherRead>(`/weather/asof?date=${date}`)
+  cachedFetch<WeatherRead>(`/weather/asof?date=${date}`, BASE, HISTORICAL_TTL)
 
 /** Turn a fetch failure into something a person can act on. */
 export function friendlyError(e: unknown): string {

@@ -1,0 +1,7 @@
+node_modules
+.sessions
+.env
+*.log
+test-recovery.js
+**/*.data.json
+**/_IGNORE_*

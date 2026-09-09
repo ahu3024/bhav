@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import sqlite3
+import time
 from contextlib import contextmanager
 from typing import Iterator
 
 import pandas as pd
 
 from .config import DB_PATH
+
+# Long enough to ride out a nightly ingest's write transaction, short enough
+# that a genuinely wedged lock still surfaces as an error rather than a hang.
+SQLITE_TIMEOUT = 30.0
 
 SCHEMA = """
 -- One row per 10-day Sentinel-2 composite, at the satellite's own cadence.
@@ -118,13 +123,32 @@ CREATE TABLE IF NOT EXISTS warehouses (
     lon      REAL,
     capacity REAL
 );
+
+-- Small key/value scratch. Holds `data_version`: a counter bumped whenever an
+-- ingest rewrites a source table. Everything cacheable keys off it, so a
+-- subscription or an alert row -- writes that change nothing a model reads --
+-- no longer look like new data. See data_version() below.
+CREATE TABLE IF NOT EXISTS meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT
+);
 """
 
 
 def connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=SQLITE_TIMEOUT)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    # WAL lets readers keep serving while an ingest writes, which is the whole
+    # difference between "the pipeline refreshes" and "the API 500s for a
+    # minute every night". busy_timeout covers the brief exclusive moments WAL
+    # still needs (checkpoint, schema change) instead of failing instantly.
+    try:
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute(f"PRAGMA busy_timeout = {int(SQLITE_TIMEOUT * 1000)}")
+    except sqlite3.OperationalError:
+        # A read-only mount cannot switch journal mode. Reads still work.
+        pass
     return conn
 
 
@@ -148,9 +172,81 @@ def write_df(df: pd.DataFrame, table: str, if_exists: str = "replace") -> int:
     init_db()
     with connect() as conn:
         df.to_sql(table, conn, if_exists=if_exists, index=False)
+    bump_data_version()
     return len(df)
 
 
 def read_df(query: str, params: tuple = ()) -> pd.DataFrame:
     with connect() as conn:
         return pd.read_sql_query(query, conn, params=params)
+
+
+# --- data generation --------------------------------------------------------
+#
+# "Has the data changed?" used to be answered with the database file's mtime,
+# and that was wrong in a way that cost a full feature rebuild per request: the
+# API writes an alert row while serving /alert/today, which moves the mtime,
+# which invalidated the cache the *next* request needed. Row counts have the
+# same problem in reverse -- an ingest that corrects a value without adding a
+# row would go unnoticed.
+#
+# So the ingest path states it outright. `write_df` bumps a counter, and
+# everything cacheable keys off that counter. Writes that no model reads --
+# subscriptions, alert rows, the message log -- leave it alone by construction.
+
+
+# data_version() is read on every cached lookup, including inside the
+# track-record walk that scores hundreds of dates, so it must not cost a sqlite
+# connection each time. One second of staleness is invisible next to a pipeline
+# that runs nightly, and a local bump clears the memo outright.
+_VERSION_MEMO: tuple[float, str] | None = None
+_VERSION_TTL = 1.0
+
+
+def bump_data_version() -> str:
+    """Record that a source table was rewritten. Returns the new version."""
+    global _VERSION_MEMO
+    _VERSION_MEMO = None
+    version = f"{time.time_ns()}"
+    try:
+        with cursor() as cur:
+            cur.execute(
+                "INSERT INTO meta (key, value) VALUES ('data_version', ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (version,),
+            )
+    except sqlite3.Error:
+        return data_version()
+    return version
+
+
+def data_version() -> str:
+    """A token that changes only when the pipeline rewrites a source table.
+
+    Falls back to the file mtime for a database written before the meta table
+    existed, so an older data/bhav.db still caches correctly (just coarsely).
+    """
+    global _VERSION_MEMO
+    now = time.monotonic()
+    if _VERSION_MEMO is not None and now - _VERSION_MEMO[0] < _VERSION_TTL:
+        return _VERSION_MEMO[1]
+    version = _read_data_version()
+    _VERSION_MEMO = (now, version)
+    return version
+
+
+def _read_data_version() -> str:
+    try:
+        with connect() as conn:
+            row = conn.execute(
+                "SELECT value FROM meta WHERE key = 'data_version'"
+            ).fetchone()
+        if row and row["value"]:
+            return str(row["value"])
+    except sqlite3.Error:
+        pass
+    try:
+        st = DB_PATH.stat()
+        return f"mtime-{st.st_mtime_ns}-{st.st_size}"
+    except OSError:
+        return "absent"

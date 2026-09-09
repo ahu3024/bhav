@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+.env
+
+# Never let the live database into an image: it holds subscriber phone numbers
+# and message bodies. data/seed.db is the one that ships.
+data/bhav.db
+data/bhav.db-wal
+data/bhav.db-shm
+data/raw/*.csv

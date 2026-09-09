@@ -3,5 +3,15 @@ __pycache__/
 *.pyc
 .env
 data/raw/*.csv
+
+# The live database. Holds `subscribers` and `message_log` — real phone numbers
+# and the text of every message sent to them — so it is never committed. What
+# ships instead is data/seed.db, built by `python -m scripts.make_seed`, which
+# carries only the tables the model reads.
 data/bhav.db
-models/*.pkl
+data/bhav.db-wal
+data/bhav.db-shm
+
+# Trained artefacts ARE committed (a few hundred KB) so a deploy serves a real
+# signal on its first request instead of 503ing until someone runs a build.
+# Nothing personal goes into them. Re-train with `python -m scripts.build`.

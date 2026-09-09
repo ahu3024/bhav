@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { signal } from '../data'
-import { getAlertToday, sourceOf, formatDate, displayConfidence, type Alert } from '../api'
+import { useSnapshot, sourceOf, formatDate, displayConfidence, type Alert } from '../api'
 import { sentence } from '../plain'
 
 type Face = {
@@ -19,17 +19,6 @@ type Face = {
 // Front face — the illustrative sample from data.ts. Static, no network, so it
 // paints instantly on every refresh with zero buffer.
 const SAMPLE: Face = { ...signal, confLabel: 'of similar past weeks' }
-
-const CACHE_KEY = 'bhav:alert:v1'
-
-function readCache(): Alert | null {
-  try {
-    const raw = localStorage.getItem(CACHE_KEY)
-    return raw ? (JSON.parse(raw) as Alert) : null
-  } catch {
-    return null
-  }
-}
 
 function toFace(a: Alert): Face {
   const impact = Math.round(a.expected_impact_per_quintal)
@@ -93,30 +82,13 @@ function CardFace({ face, tag }: { face: Face; tag: string }) {
 }
 
 export default function SignalCard() {
-  // Seed the live face from cache synchronously — if we've fetched before, the
-  // back face is already populated and nothing flickers on refresh.
-  const [live, setLive] = useState<Alert | null>(() => readCache())
+  // The shared snapshot hands back the stored answer on the first render, so
+  // the back face is already populated and nothing flickers on refresh. A
+  // backend that is down or still waking leaves the last known call on screen
+  // rather than blanking it.
+  const { data: snap } = useSnapshot()
+  const live: Alert | null = snap?.alert ?? null
   const [flipped, setFlipped] = useState(false)
-
-  useEffect(() => {
-    let alive = true
-    getAlertToday()
-      .then((a) => {
-        if (!alive) return
-        setLive(a)
-        try {
-          localStorage.setItem(CACHE_KEY, JSON.stringify(a))
-        } catch {
-          /* private mode — fine, we just re-fetch next load */
-        }
-      })
-      .catch(() => {
-        /* backend down — keep cached (or the placeholder) */
-      })
-    return () => {
-      alive = false
-    }
-  }, [])
 
   const backFace: Face = live
     ? toFace(live)

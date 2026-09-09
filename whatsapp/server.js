@@ -27,9 +27,22 @@ const qrTerminal = require('qrcode-terminal')
 const { create, ev } = require('@open-wa/wa-automate')
 const waPuppeteerConfig = require('@open-wa/wa-automate/dist/config/puppeteer.config')
 
-const PORT = Number(process.env.WA_BRIDGE_PORT || 3001)
+// PORT first: a platform assigns the port and expects the process to bind the
+// one it was given. WA_BRIDGE_PORT stays as the local name.
+const PORT = Number(process.env.PORT || process.env.WA_BRIDGE_PORT || 3001)
+// Bind all interfaces by default — inside a container, listening on 127.0.0.1
+// means nothing outside the container can reach it, and the platform's health
+// check will declare the deploy dead.
+const HOST = process.env.WA_BRIDGE_HOST || '0.0.0.0'
 const TOKEN = process.env.WA_BRIDGE_TOKEN || ''
+// Set this on any host. Without a token /send will message anyone who asks,
+// from a real WhatsApp account — the kind of open relay that gets the number
+// banned, which is not a recoverable failure.
+const REQUIRE_TOKEN = /^(1|true|yes|on)$/i.test(process.env.WA_REQUIRE_TOKEN || '')
 const SESSION_ID = process.env.WA_SESSION_ID || 'bhav'
+// The linked account lives here (a Chrome profile — see PROFILE_DIR below), so
+// on a host this MUST point at a mounted disk. Left on the container's own
+// filesystem, every deploy asks for the QR to be scanned again.
 const SESSION_DIR = process.env.WA_SESSION_DIR || path.join(__dirname, '.sessions')
 const CHROME = process.env.WA_CHROME_PATH || undefined
 const SHOW_QR = process.argv.includes('--show-qr')
@@ -40,6 +53,12 @@ const UA =
   'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
 
 fs.mkdirSync(SESSION_DIR, { recursive: true })
+
+// A session directory that is not on a mount is a session that has to be
+// re-linked by hand after every deploy. We cannot prove a path is a mount from
+// here, but "the operator pointed it somewhere other than the checkout" is a
+// good enough proxy to report honestly on /health.
+const PERSISTENT_SESSION = !SESSION_DIR.startsWith(__dirname)
 
 // open-wa hardcodes a Chrome/104 user agent, and WhatsApp Web now answers that
 // with "update Chrome" instead of the app — window.Debug never loads and start-up
@@ -119,6 +138,10 @@ app.get('/health', (_req, res) => {
     sent: state.sent,
     failed: state.failed,
     last_send_at: state.lastSendAt,
+    // Whether the linkage will survive a redeploy. If this is inside the
+    // container rather than on a mounted disk, it will not.
+    session_dir: SESSION_DIR,
+    persistent_session: PERSISTENT_SESSION,
   })
 })
 
@@ -443,7 +466,26 @@ async function connect() {
     killProcessOnBrowserClose: false,
     throwErrorOnTosBlock: false,
     blockCrashLogs: true,
-    args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
+    args: [
+      // --no-sandbox: containers run without the kernel namespaces Chrome's
+      // sandbox needs. --disable-dev-shm-usage: /dev/shm is 64 MB in most
+      // container runtimes and Chrome will crash filling it; this puts shared
+      // memory in /tmp instead. The rest trims a headless browser that has no
+      // screen, no extensions and one tab down to something that fits beside
+      // Node in a small instance.
+      '--no-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+      '--disable-extensions',
+      '--disable-background-networking',
+      '--disable-backgrounding-occluded-windows',
+      '--disable-renderer-backgrounding',
+      '--disable-features=TranslateUI,BlinkGenPropertyTrees',
+      '--no-first-run',
+      '--no-default-browser-check',
+      '--mute-audio',
+      '--js-flags=--max-old-space-size=256',
+    ],
   })
 
   state.status = 'connected'
@@ -479,9 +521,28 @@ function startLivenessProbe() {
 }
 
 async function start() {
-  app.listen(PORT, () => {
-    console.log(`[bridge] http://localhost:${PORT}  (session "${SESSION_ID}")`)
+  if (REQUIRE_TOKEN && !TOKEN) {
+    // Refusing to boot is the kind thing to do here. A bridge that comes up
+    // without a token looks healthy, and the first sign of trouble is the
+    // account being banned.
+    console.error(
+      '[bridge] WA_REQUIRE_TOKEN is set but WA_BRIDGE_TOKEN is empty. ' +
+        'Refusing to start an unauthenticated bridge — anyone who can reach ' +
+        'this port could message anyone from the linked WhatsApp account.',
+    )
+    process.exit(1)
+  }
+
+  app.listen(PORT, HOST, () => {
+    console.log(`[bridge] listening on ${HOST}:${PORT}  (session "${SESSION_ID}")`)
     if (!TOKEN) console.warn('[bridge] WA_BRIDGE_TOKEN is unset — /send is unauthenticated')
+    if (!PERSISTENT_SESSION) {
+      console.warn(
+        `[bridge] session dir ${SESSION_DIR} is inside the checkout. On a host ` +
+          'this means re-scanning the QR after every deploy — point ' +
+          'WA_SESSION_DIR at a mounted disk.',
+      )
+    }
   })
 
   startLivenessProbe()
@@ -547,7 +608,13 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
 // Opt-out arrives on WhatsApp but the subscriber list lives in the Python
 // backend, so hand it straight over. A bridge that swallowed STOP would leave
 // people unsubscribing into the void.
-const BACKEND = process.env.BHAV_API_URL || 'http://localhost:8000'
+// Accepts a bare `host:port` too — a platform that wires services together
+// hands over an address with no scheme, and fetch() rejects that outright.
+const BACKEND = (() => {
+  const raw = (process.env.BHAV_API_URL || 'http://localhost:8000').trim().replace(/\/$/, '')
+  if (!raw) return 'http://localhost:8000'
+  return raw.includes('://') ? raw : `http://${raw}`
+})()
 
 async function forwardOptOut(chatId) {
   await forward('/unsubscribe', chatId)

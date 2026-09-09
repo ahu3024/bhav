@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react'
 import {
   getMessagePreviews,
-  getDeliveryStatus,
+  getDeliveryReady,
+  adminToken,
   subscribe,
   whatsappQrUrl,
   friendlyError,
   LANG_NAMES,
   type Lang,
   type MessagePreview,
-  type DeliveryStatus,
+  type DeliveryReady,
 } from '../api'
 
 export default function GetAlerts() {
@@ -17,15 +18,20 @@ export default function GetAlerts() {
   const [name, setName] = useState('')
   const [pin, setPin] = useState('')
   const [preview, setPreview] = useState<MessagePreview | null>(null)
-  const [delivery, setDelivery] = useState<DeliveryStatus | null>(null)
+  const [delivery, setDelivery] = useState<DeliveryReady | null>(null)
   const [state, setState] = useState<'idle' | 'sending' | 'done' | 'error'>('idle')
   const [msg, setMsg] = useState('')
 
   // open-wa rotates the pairing QR every ~20s and the session flips to linked
-  // the moment someone scans it, so this panel has to keep looking rather than
-  // read once — otherwise it shows a dead QR, or keeps asking for a scan that
-  // already happened.
+  // the moment someone scans it, so the pairing panel has to keep looking
+  // rather than read once — otherwise it shows a dead QR, or keeps asking for a
+  // scan that already happened.
   const [qrNonce, setQrNonce] = useState(0)
+
+  // Only an operator arriving with ?admin=<token> gets the pairing panel.
+  // Scanning that QR links the scanner's own WhatsApp account to this
+  // deployment, so it is not something a visitor's browser is handed.
+  const admin = adminToken()
 
   useEffect(() => {
     let alive = true
@@ -34,28 +40,56 @@ export default function GetAlerts() {
       .catch(() => {
         /* backend down — the form still explains itself */
       })
-
-    const poll = () =>
-      getDeliveryStatus()
-        .then((d) => alive && setDelivery(d))
-        .catch(() => {})
-    poll()
-    const statusTimer = setInterval(poll, 5000)
-    const qrTimer = setInterval(() => alive && setQrNonce((n) => n + 1), 15000)
     return () => {
       alive = false
-      clearInterval(statusTimer)
-      clearInterval(qrTimer)
     }
   }, [])
 
-  // Once linked there is nothing left to poll for.
+  // Delivery state is the one thing on this page that changes without the data
+  // changing, so it is the one thing worth asking about repeatedly — but only
+  // while there is an answer worth waiting for. Once the session is linked
+  // there is nothing left to watch, and a tab left open on the registration
+  // form should not spend the rest of the day polling a backend.
+  const ready = delivery?.ready ?? false
   useEffect(() => {
-    if (!delivery?.whatsapp_ready) return
-    setQrNonce(0)
-  }, [delivery?.whatsapp_ready])
+    if (ready) return
+    let alive = true
+    let timer = 0
+    // Someone scanning a QR is watching this panel, so start attentive; an
+    // unattended tab backs off to a check a minute rather than one every five
+    // seconds, which over an afternoon is the difference between ~60 requests
+    // and ~2,900.
+    let wait = 5000
+    const poll = () => {
+      getDeliveryReady()
+        .then((d) => alive && setDelivery(d))
+        .catch(() => {})
+        .finally(() => {
+          if (!alive) return
+          wait = Math.min(60000, wait * 1.6)
+          timer = window.setTimeout(poll, wait)
+        })
+    }
+    poll()
+    return () => {
+      alive = false
+      window.clearTimeout(timer)
+    }
+  }, [ready])
 
-  const qrSrc = `${whatsappQrUrl()}?n=${qrNonce}`
+  // Nothing to refresh once it is linked.
+  useEffect(() => {
+    if (!ready || !admin) return
+    setQrNonce(0)
+  }, [ready, admin])
+
+  useEffect(() => {
+    if (ready || !admin) return
+    const qrTimer = window.setInterval(() => setQrNonce((n) => n + 1), 15000)
+    return () => window.clearInterval(qrTimer)
+  }, [ready, admin])
+
+  const qrSrc = admin ? `${whatsappQrUrl(admin)}&n=${qrNonce}` : ''
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -161,14 +195,14 @@ export default function GetAlerts() {
               <p className={`bt-msg${state === 'error' ? ' bt-msg--err' : ''}`}>{msg}</p>
             )}
 
-            {delivery && !delivery.configured && (
+            {delivery && !delivery.reachable && (
               <p className="alerts__note">
                 The WhatsApp bridge isn’t running — start it with{' '}
                 <code>npm start</code> in <code>whatsapp/</code>. You can still
                 register; the next weekly signal goes out once it is up.
               </p>
             )}
-            {delivery?.configured && delivery.qr_available && (
+            {delivery?.reachable && delivery.awaiting_pairing && admin && (
               <div className="alerts__note alerts__pair">
                 <p>
                   The sending account isn’t linked yet. Scan this from the phone
@@ -184,12 +218,16 @@ export default function GetAlerts() {
                 />
               </div>
             )}
-            {delivery?.whatsapp_ready && (
+            {delivery?.reachable && delivery.awaiting_pairing && !admin && (
               <p className="alerts__note">
-                Sending live from{' '}
-                <code>{delivery.linked_number ?? 'the linked account'}</code> over
-                open-wa — no 24-hour window, so the signal reaches you whether or
-                not you have messaged us before.
+                The sending account is being set up. You can register now — the
+                next weekly signal goes out as soon as it is linked.
+              </p>
+            )}
+            {delivery?.ready && (
+              <p className="alerts__note">
+                Sending live over open-wa — no 24-hour window, so the signal
+                reaches you whether or not you have messaged us before.
               </p>
             )}
           </form>

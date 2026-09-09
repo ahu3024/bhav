@@ -1,0 +1,9 @@
+# Everything the API needs, plus the sources it does not.
+#
+# Use this to run the pipeline — scripts.fetch_all, scripts.build and anything
+# under bhav/ingest. The serving image installs requirements.txt alone, so a
+# missing Earth Engine credential can never take down the API.
+-r requirements.txt
+
+earthengine-api>=0.1.390   # Sentinel-2 NDVI (bhav/ingest/ndvi.py)
+lxml>=5.0                  # pandas.read_html parser for Agmarknet

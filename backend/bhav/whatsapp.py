@@ -31,7 +31,19 @@ REQUEST_TIMEOUT = 45          # a cold WhatsApp Web send is not fast
 
 
 def _base() -> str:
-    return os.getenv("WA_BRIDGE_URL", DEFAULT_URL).rstrip("/")
+    """Where the bridge lives.
+
+    Accepts a bare `host:port` as well as a full URL: a platform that wires
+    services together for you hands over an address without a scheme, and
+    `requests` rejects that with "No connection adapters were found" — an error
+    that reads like the bridge is down rather than like a missing `http://`.
+    """
+    url = os.getenv("WA_BRIDGE_URL", DEFAULT_URL).strip().rstrip("/")
+    if not url:
+        return DEFAULT_URL
+    if "://" not in url:
+        url = f"http://{url}"
+    return url
 
 
 def _headers() -> dict:

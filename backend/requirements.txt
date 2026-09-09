@@ -1,18 +1,20 @@
-# Core pipeline
+# What the API needs to serve a signal. Deliberately smaller than what the
+# pipeline needs: earthengine-api and lxml are only reachable from bhav/ingest,
+# which the API never imports, and leaving them out of the serving image saves
+# roughly 80 MB of dependencies on an instance that is often memory-bound.
+# Fetching data? Install requirements-ingest.txt instead.
+
+# Core
 pandas>=2.2
 numpy>=1.26
 scikit-learn>=1.4
 lightgbm>=4.3
 requests>=2.31
-lxml>=5.0           # pandas.read_html parser for Agmarknet
 python-dotenv>=1.0
 
 # API
 fastapi>=0.110
 uvicorn[standard]>=0.29
-
-# Satellite NDVI
-earthengine-api>=0.1.390
 
 # WhatsApp delivery is the Node open-wa service under whatsapp/; this side
 # only speaks HTTP to it over `requests` (already required above).

@@ -4,3 +4,7 @@ dist-ssr
 *.local
 .DS_Store
 .vite
+
+# Frontend build settings. .env.example is the tracked template.
+.env
+.env.local

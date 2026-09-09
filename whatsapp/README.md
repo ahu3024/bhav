@@ -123,3 +123,32 @@ startup dies on a 30-second `waitForFunction`. Its own `customUserAgent` option
 is only read when `inDocker` is set (`initializer.js:129`), so it cannot fix
 this from config — `server.js` overwrites the module's exported default instead.
 Override with `WA_USER_AGENT` if WhatsApp starts rejecting Chrome/130 too.
+
+## Hosting it
+
+`Dockerfile` builds the bridge with a distro Chromium — not Puppeteer's
+downloaded one, whose postinstall is a common build failure that takes the whole
+`npm install` down with it. `../DEPLOY.md` has the full walkthrough; the three
+things that decide whether a hosted bridge works:
+
+- **`WA_SESSION_DIR` must be a mounted disk.** The linked account *is* a Chrome
+  profile in that directory, so keeping it inside the container means scanning a
+  pairing QR again after every deploy. `/health` reports `persistent_session:
+  false` when it looks like that has happened.
+- **The instance cannot sleep.** A WhatsApp Web session that is repeatedly torn
+  down and re-established is how an account gets flagged, so a tier that stops
+  after idle minutes is not an option. Chromium plus Node also does not fit in
+  512 MB reliably — a container that restarts under load is the OOM killer.
+- **Set `WA_REQUIRE_TOKEN=1`.** The bridge then refuses to start without
+  `WA_BRIDGE_TOKEN`. An unauthenticated bridge looks perfectly healthy and will
+  message anyone who asks, from a real account; the first sign of the mistake is
+  usually the ban.
+
+Deployed as a private service it is reachable only from the API, which
+re-exposes the QR and the send path behind its own admin token. That is the
+arrangement to prefer: `/qr` hands out a code that links a WhatsApp account to
+this deployment, and `/send` messages arbitrary numbers from it.
+
+`PORT` is honoured (over `WA_BRIDGE_PORT`), and the server binds `0.0.0.0` —
+inside a container, listening on loopback means the platform's health check
+declares the deploy dead.
