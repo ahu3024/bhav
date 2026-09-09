@@ -1,16 +1,25 @@
 # Deploying Bhav
 
-Three pieces, and only one of them is difficult:
+Three pieces. `render.yaml` deploys two of them free, no card required:
 
-| Piece | What it needs | Free tier? |
+| Piece | What it needs | In render.yaml? |
 |---|---|---|
-| **bhav-web** — the site | static files | yes |
-| **bhav-api** — the signal | Python + ~1 GB of committed data | yes, with a caveat |
-| **bhav-whatsapp** — delivery | a real Chromium, a disk, and to never sleep | **no** |
+| **bhav-web** — the site | static files | yes, free |
+| **bhav-api** — the signal | Python + ~1 GB of committed data | yes, free |
+| **bhav-whatsapp** — delivery | a real Chromium, a disk, and to never sleep | **no — see below** |
 
-`render.yaml` describes all three. Push the repo to GitHub, then **Render → New →
-Blueprint** and point it at this repo. Everything below explains what that file
-is doing and what you have to fill in by hand.
+The site and the signal work fully on their own — registration still takes a
+phone number, `/delivery/status` just reports nothing is reachable yet, and the
+form says so. There is no free way to run the WhatsApp bridge on Render: it
+needs a disk (Render only sells those on paid plans) and an instance that never
+sleeps (a free one stops after 15 idle minutes, and a WhatsApp Web session torn
+down and rebuilt that often is how the linked account gets flagged). Add it
+later — as a paid Render service, or self-hosted on any machine you already
+leave running — see *Delivery* below.
+
+Push the repo to GitHub, then **Render → New → Blueprint** and point it at this
+repo. Everything below explains what that file is doing and what you have to
+fill in by hand.
 
 ---
 
@@ -69,25 +78,33 @@ Runs from `backend/Dockerfile`. Python 3.12 — not the newest — because light
 numpy and scikit-learn all publish wheels for it, so the build is a download
 rather than a compile in an image with no compiler.
 
-### The disk
+### Persisting data (optional, needs a paid plan)
+
+`render.yaml` deploys the API on `plan: free` with no disk. That works fully —
+the shipped snapshot (`data/seed.db`) is baked into the image, so every deploy
+serves a real signal on its first request — but the container filesystem is
+wiped on each deploy, so any registrations taken since the last one go with it.
+Free instances also sleep after 15 idle minutes and take roughly 50 seconds to
+wake; the site stays readable through that, because the browser renders its
+cached copy while the request is in flight (see *Caching* below).
+
+To keep registrations across deploys, add a disk and switch to a paid plan:
 
 ```yaml
+plan: starter
 disk:
   name: bhav-data
   mountPath: /var/data
   sizeGB: 1
+envVars:
+  - key: BHAV_DATA_DIR
+    value: /var/data
+  - key: BHAV_MODELS_DIR
+    value: /var/data/models
 ```
 
-with `BHAV_DATA_DIR=/var/data`. On first boot `bhav/bootstrap.py` copies the
-shipped snapshot onto the disk; from then on registrations survive every deploy.
-
-**To run the API on the free plan instead**, delete the `disk:` block and change
-`plan: starter` to `plan: free`. Leave everything else. The API still works —
-the data is in the image — but the container filesystem is wiped on each deploy,
-so registrations do not survive one. Free instances also sleep after 15 idle
-minutes and take roughly 50 seconds to wake; the site stays readable through
-that, because the browser renders its cached copy while the request is in
-flight (see *Caching* below).
+On first boot `bhav/bootstrap.py` copies the shipped snapshot onto the disk;
+from then on registrations survive every deploy.
 
 ### Refreshing the data
 
@@ -103,9 +120,11 @@ python -m scripts.make_seed
 git commit -am "data refresh" && git push
 ```
 
-With `BHAV_SEED_MODE=refresh` (what the blueprint sets), the next deploy replaces
-the pipeline tables on the disk from the new snapshot and **keeps every
-subscriber**. Set it to `missing` if you would rather the disk always win.
+Without a disk this happens automatically on every deploy — there's nothing
+persisted to refresh. Once you add a disk (see above), `BHAV_SEED_MODE=refresh`
+(what the blueprint sets) makes the *next* deploy replace the pipeline tables on
+the disk from the new snapshot and **keep every subscriber**. Set it to
+`missing` if you would rather the disk always win.
 
 ### Environment
 
@@ -142,6 +161,10 @@ API logs a warning at boot and `/readyz` reports `admin_token_set: false`.
 
 ## Delivery — the hard one
 
+**Not deployed by default.** `render.yaml` ships only the site and the signal —
+registration still works, `/delivery/status` reports nothing reachable, and the
+form tells people so. This section is for when you're ready to add it.
+
 open-wa automates WhatsApp Web, so the bridge is a Node process driving a real
 Chromium. Three consequences:
 
@@ -158,7 +181,16 @@ Chromium. Three consequences:
    tight; if the container restarts under load, that is the OOM killer and the
    answer is `standard`.
 
-It is deployed as a **private service** (`type: pserv`) — reachable from the API
+### Adding it on Render (paid — needs a card)
+
+`render.yaml` has the full service definition commented out at the bottom, with
+the two lines it changes on `bhav-api`. Uncomment the `bhav-whatsapp` block,
+swap the two `WA_BRIDGE_*` `sync: false` entries on `bhav-api` for the
+`fromService` wiring shown right below them, and push. Re-run **Sync Blueprint**
+in the Render dashboard and it will ask for a card at that point, because
+`bhav-whatsapp` needs `plan: starter` and a disk.
+
+It deploys as a **private service** (`type: pserv`) — reachable from the API
 and from nowhere else. That matters here more than anywhere: `/qr` hands out a
 pairing code and `/send` messages arbitrary numbers from the linked account.
 
@@ -191,20 +223,28 @@ curl -H "Authorization: Bearer $BHAV_ADMIN_TOKEN" \
      https://bhav-api.onrender.com/message/status
 ```
 
-### Not paying for it
+### Self-hosting it instead (free, no card)
 
-Delete the `bhav-whatsapp` service and the two `fromService` entries that
-reference it, and run the bridge on any always-on machine you have — a home
-server, a spare VPS, a Raspberry Pi:
+Run the bridge on any always-on machine you already have — a home server, a
+spare VPS, a Raspberry Pi:
 
 ```bash
 cd whatsapp && npm ci && npm start
 ```
 
-Then point the API at it (`WA_BRIDGE_URL`) over a tunnel, and set the same
-`WA_BRIDGE_TOKEN` on both sides. Everything else is unchanged: the API degrades
-to "delivery unavailable" whenever the bridge is unreachable, and registrations
-still work — they simply wait for the next broadcast.
+Expose it over a tunnel (Tailscale Funnel, Cloudflare Tunnel, ngrok — anything
+that gives it a stable address), then on `bhav-api` in the Render dashboard set:
+
+```
+WA_BRIDGE_URL   = the tunnel's address (host:port or a full URL, either works)
+WA_BRIDGE_TOKEN = the same value as WA_BRIDGE_TOKEN in whatsapp/.env
+```
+
+No blueprint change needed — these are the two `sync: false` fields already in
+`render.yaml`. Everything else is unchanged: the API degrades to "delivery
+unavailable" whenever the bridge is unreachable, and registrations still work —
+they simply wait for the next broadcast. The trade-off is that delivery is only
+as reliable as your machine staying on and the tunnel staying up.
 
 ---
 
